@@ -443,6 +443,85 @@
 //! immediately instead of blocking forever. On platforms that don't support
 //! time, this means that the runtime can never be idle in any way.
 //!
+//! ### Emscripten support
+//!
+//! The `wasm32-unknown-emscripten` target runs Tokio's canonical
+//! single-threaded (`current_thread`) scheduler, time driver, and task system
+//! unchanged. The only platform-specific piece is a small kernel that drives
+//! the scheduler from the JavaScript event loop — re-entered by host
+//! `setTimeout` wakes and socket-event callbacks — instead of the native
+//! blocking `park` loop, so the runtime never blocks the host. No ASYNCIFY/JSPI
+//! is required.
+//!
+//! This support is experimental while its execution model settles, so it
+//! requires `--cfg tokio_unstable` (set it in `RUSTFLAGS`).
+//!
+//! Supported features: `rt`, `time`, `sync`, `macros`, `fs`, `io-util`,
+//! `io-std`, `test-util`, and `net`. Enabling `net` activates a readiness
+//! reactor backed by emscripten's socket-event callbacks instead of `mio`
+//! (which is dropped from the dependency graph), exposing
+//! [`AsyncFd`](crate::io::unix::AsyncFd). On top of it,
+//! [`lookup_host`](crate::net::lookup_host) and a client-side
+//! [`TcpStream`](crate::net::TcpStream) (`connect`, read/write, vectored write)
+//! work; `set_nodelay` and `poll_shutdown` are no-ops, since sockfs has no
+//! `setsockopt` and its `shutdown(2)` is `ENOSYS`. Server-side `accept`,
+//! `UdpSocket`, and the other mio-based socket types are not yet implemented.
+//! The `process`, `signal`, and `rt-multi-thread` features are rejected at
+//! compile time: `process`/`signal` have no underlying primitives (`fork`/`exec`,
+//! kernel signal delivery) and `rt-multi-thread` has no native threads.
+//!
+//! `Runtime::block_on` drives the scheduler synchronously to a fixed point
+//! and returns the output. Because a worker cannot block its host event loop,
+//! it **panics** if the future would have to suspend (await a timer or an
+//! external wake). Use `#[tokio::main]` / `#[tokio::test]` (which drive via
+//! the event loop) for futures that suspend.
+//!
+//! `spawn_blocking` has no threadpool to dispatch to, so the closure runs as a
+//! canonical spawned task on the single thread and returns the usual
+//! `JoinHandle`. `tokio::fs::*` and `tokio::io::{stdin, stdout, stderr}`
+//! likewise run their `std::*` calls inline, because emscripten's libc
+//! syscalls complete synchronously and don't block the cooperative scheduler.
+//!
+//! Panics behave as on native: `wasm32-unknown-emscripten` defaults to
+//! `panic = "unwind"`, so panic recovery works, a panicking task yields
+//! `Err(JoinError)`, and `JoinError::is_panic` / `JoinError::into_panic`
+//! report the payload.
+//!
+//! #### `#[tokio::test]` / `#[tokio::main]` on emscripten
+//!
+//! Because the host event loop cannot be blocked, each `#[tokio::test]` and
+//! `#[tokio::main]` body runs in its own Node `worker_threads.Worker`. The
+//! parent thread blocks on `Atomics.wait` while the worker drives the future
+//! to completion, so libtest sees a normal synchronous test fn that returns
+//! pass/fail. Worker panics are captured and re-raised on the parent so
+//! libtest reports a faithful failure with the original file/line/message.
+//!
+//! Caveats:
+//!  * `#[tokio::main]` defaults to the `multi_thread` flavor, which is
+//!    unavailable here; use `#[tokio::main(flavor = "current_thread")]` (as on
+//!    any build without `rt-multi-thread`). A non-`()` return value cannot be
+//!    marshalled back across the worker boundary.
+//!  * `#[should_panic(expected = "...")]` does not match strings against
+//!    worker-side panics (the parent payload is a marker type). The bare
+//!    `#[should_panic]` attribute works.
+//!
+//! #### Linking and running emscripten tests
+//!
+//! The test harness ships as `tokio/src/emscripten/test_worker.js` and a
+//! cargo runner at `tokio/ci/emscripten_entry.mjs`. Required environment:
+//!
+//! ```text
+//! CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER="node tokio/ci/emscripten_entry.mjs"
+//! RUSTFLAGS="--cfg tokio_unstable \
+//!            -C link-args=-sALLOW_MEMORY_GROWTH=1 \
+//!            -C link-args=-sMODULARIZE=1 \
+//!            -C link-args=-sEXPORT_ES6=1 \
+//!            -C link-args=-sEXIT_RUNTIME=1 \
+//!            -C link-arg=--js-library=/path/to/tokio/src/emscripten/test_worker.js"
+//! ```
+//!
+//! See tokio's CI workflow for the canonical invocation.
+//!
 //! ## Unstable `WASM` support
 //!
 //! Tokio also has unstable support for some additional `WASM` features. This
@@ -466,6 +545,7 @@ compile_error! {
 #[cfg(all(
     not(tokio_unstable),
     target_family = "wasm",
+    not(target_os = "emscripten"),
     any(
         feature = "fs",
         feature = "io-std",
@@ -476,6 +556,23 @@ compile_error! {
     )
 ))]
 compile_error!("Only features sync,macros,io-util,rt,time are supported on wasm.");
+
+// On emscripten, `process`, `signal`, and `rt-multi-thread` compile but are
+// inert, so `full` (and any dependency that enables these features) still
+// builds. `process` and `signal` have no `fork`/`exec` or kernel signal
+// delivery, so their modules are compiled out (see `cfg_process!` /
+// `cfg_signal!`). The multi-threaded runtime compiles but only runs under a
+// `PROXY_TO_PTHREAD` build; `#[tokio::main]` steers to `current_thread`.
+
+// The emscripten runtime (the event-loop runtime + `AsyncFd` reactor, and the
+// `event_loop::{schedule, handle}` API the `#[tokio::main]` / `#[tokio::test]`
+// macros build on) is experimental while its execution model settles (e.g.
+// JSPI), so it is gated behind `--cfg tokio_unstable` for now.
+#[cfg(all(target_os = "emscripten", feature = "rt", not(tokio_unstable)))]
+compile_error!(
+    "Tokio's `wasm32-unknown-emscripten` runtime support is experimental and \
+requires `--cfg tokio_unstable` (set it in `RUSTFLAGS`)."
+);
 
 #[cfg(all(not(tokio_unstable), feature = "io-uring"))]
 compile_error!("The `io-uring` feature requires `--cfg tokio_unstable`.");
@@ -538,6 +635,12 @@ cfg_rt! {
 cfg_not_rt! {
     pub(crate) mod runtime;
 }
+
+// Emscripten platform support: the event-loop runtime (public ambient
+// `event_loop::{schedule, drive}`), the driving kernel, FFI, and the
+// `#[tokio::test]` worker harness.
+#[cfg(target_os = "emscripten")]
+pub mod emscripten;
 
 cfg_signal! {
     pub mod signal;

@@ -232,7 +232,9 @@ cfg_io_driver_impl! {
         pub use ready::Ready;
     }
 
-    #[cfg_attr(target_os = "wasi", allow(unused_imports))]
+    // `PollEvented` wraps a `mio::event::Source` on mio platforms; on emscripten
+    // (no mio) the same abstraction is backed by a raw fd registered with the
+    // reactor (see `Registration`), so the source bound is `AsRawFd` there.
     mod poll_evented;
 
     #[cfg(not(loom))]
@@ -252,13 +254,16 @@ cfg_aio! {
     }
 }
 
-cfg_net_unix! {
-    mod async_fd;
+// `AsyncFd`: Unix + `net`. On emscripten (`unix`) it's backed by the reactor.
+#[cfg(all(unix, feature = "net"))]
+mod async_fd;
 
-    pub mod unix {
-        //! Asynchronous IO structures specific to Unix-like operating systems.
-        pub use super::async_fd::{AsyncFd, AsyncFdTryNewError, AsyncFdReadyGuard, AsyncFdReadyMutGuard, TryIoError};
-    }
+#[cfg(all(unix, feature = "net"))]
+pub mod unix {
+    //! Asynchronous IO structures specific to Unix-like operating systems.
+    pub use super::async_fd::{
+        AsyncFd, AsyncFdReadyGuard, AsyncFdReadyMutGuard, AsyncFdTryNewError, TryIoError,
+    };
 }
 
 cfg_io_std! {

@@ -506,7 +506,7 @@ fn parse_knobs(mut input: ItemFn, is_test: bool, config: FinalConfig) -> TokenSt
 
     let body_ident = quote! { body };
     // This explicit `return` is intentional. See tokio-rs/tokio#4636
-    let last_block = quote_spanned! {last_stmt_end_span=>
+    let native_last_block = quote_spanned! {last_stmt_end_span=>
 
         #[allow(clippy::expect_used, clippy::diverging_sub_expression, clippy::needless_return, clippy::unwrap_in_result)]
         {
@@ -521,6 +521,106 @@ fn parse_knobs(mut input: ItemFn, is_test: bool, config: FinalConfig) -> TokenSt
 
     };
 
+    // The wasm stack can't block, so the two entry points diverge from native:
+    //
+    // * `#[tokio::test]` must report synchronously, so it emits an inner
+    //   `extern "C" fn()` that reconstructs the body inside a Node worker (a
+    //   future can't cross the wasm-instance boundary) and runs it via
+    //   `emscripten_run_test_body`, while the parent parks on `Atomics.wait`.
+    //   Tests only.
+    // * `#[tokio::main]` schedules the body on the event-loop runtime and returns
+    //   without blocking; it must return `()`.
+    // Declared return type (`()` if elided).
+    let output_type = match &input.sig.output {
+        syn::ReturnType::Default => quote! { () },
+        syn::ReturnType::Type(_, ret_type) => quote! { #ret_type },
+    };
+
+    let body_source = input.body();
+    let emscripten_last_block = if is_test {
+        let emscripten_start_paused = config.start_paused.unwrap_or(false);
+        quote_spanned! {last_stmt_end_span=>
+
+            #[allow(clippy::expect_used, clippy::diverging_sub_expression, clippy::needless_return, clippy::unwrap_in_result, clippy::type_complexity)]
+            {
+                extern "C" fn __tokio_emscripten_entry() {
+                    let body = async #body_source;
+                    // Fix the body's output to the declared type (so `?`/`Ok(())`
+                    // infer), as the native path does.
+                    let body: ::std::pin::Pin<::std::boxed::Box<
+                        dyn ::std::future::Future<Output = #output_type>,
+                    >> = ::std::boxed::Box::pin(body);
+                    #crate_path::macros::support::emscripten_run_test_body(
+                        body,
+                        #emscripten_start_paused,
+                    );
+                }
+                // Failure panics here (libtest -> FAILED); on success, yield a
+                // value of the declared type (the body ran in the worker).
+                #crate_path::macros::support::emscripten_run_test(__tokio_emscripten_entry);
+                return <#output_type as #crate_path::macros::support::EmscriptenTestOutput>::test_success();
+            }
+
+        }
+    } else {
+        let returns_unit = match &input.sig.output {
+            syn::ReturnType::Default => true,
+            syn::ReturnType::Type(_, ty) => {
+                matches!(&**ty, syn::Type::Tuple(tuple) if tuple.elems.is_empty())
+            }
+        };
+        if returns_unit {
+            quote_spanned! {last_stmt_end_span=>
+
+                #[allow(clippy::expect_used, clippy::diverging_sub_expression, clippy::needless_return, clippy::unwrap_in_result)]
+                {
+                    let body = async #body_source;
+                    #crate_path::emscripten::event_loop::schedule(body, |__outcome| {
+                        // A `main` panic (location already printed by the hook):
+                        // exit with the conventional panic code.
+                        if __outcome.is_err() {
+                            ::std::process::exit(101);
+                        }
+                    });
+                    #crate_path::emscripten::event_loop::drive();
+                    return;
+                }
+
+            }
+        } else {
+            quote_spanned! {last_stmt_end_span=>
+                ::core::compile_error!(
+                    "`#[tokio::main]` on wasm32-unknown-emscripten must return `()`: the \
+                     runtime drives the body on the host event loop and returns immediately, \
+                     so it cannot produce a return value"
+                );
+            }
+        }
+    };
+
+    // The emscripten worker path is the single-threaded strategy (current_thread
+    // / local). `multi_thread` has no native threads on emscripten, so it's
+    // rejected there with a targeted error (pending a `PROXY_TO_PTHREAD` runtime)
+    // rather than the opaque failure of the native multi-thread `block_on` path.
+    let last_block = match config.flavor {
+        RuntimeFlavor::Threaded => quote! {
+            #[cfg(not(target_os = "emscripten"))]
+            #native_last_block
+            #[cfg(target_os = "emscripten")]
+            ::core::compile_error!(
+                "the `multi_thread` runtime flavor is not available on \
+                 wasm32-unknown-emscripten (no native threads); use \
+                 `flavor = \"current_thread\"`"
+            );
+        },
+        _ => quote! {
+            #[cfg(not(target_os = "emscripten"))]
+            #native_last_block
+            #[cfg(target_os = "emscripten")]
+            #emscripten_last_block
+        },
+    };
+
     let body = input.body();
 
     // For test functions pin the body to the stack and use `Pin<&mut dyn
@@ -532,18 +632,16 @@ fn parse_knobs(mut input: ItemFn, is_test: bool, config: FinalConfig) -> TokenSt
     //
     // We don't do this for the main function as it should only be used once so
     // there will be no benefit.
-    let output_type = match &input.sig.output {
-        // For functions with no return value syn doesn't print anything,
-        // but that doesn't work as `Output` for our boxed `Future`, so
-        // default to `()` (the same type as the function output).
-        syn::ReturnType::Default => quote! { () },
-        syn::ReturnType::Type(_, ret_type) => quote! { #ret_type },
-    };
-
+    //
+    // On emscripten the body is reconstructed inside the worker entry
+    // function, so the macro's outer `body` binding is unused.
     let body = if is_test {
         quote! {
+            #[cfg(not(target_os = "emscripten"))]
             let body = async #body;
+            #[cfg(not(target_os = "emscripten"))]
             #crate_path::pin!(body);
+            #[cfg(not(target_os = "emscripten"))]
             let body: ::core::pin::Pin<&mut dyn ::core::future::Future<Output = #output_type>> = body;
         }
     } else {
@@ -555,6 +653,7 @@ fn parse_knobs(mut input: ItemFn, is_test: bool, config: FinalConfig) -> TokenSt
                 quote! {}
             }
             _ => quote! {
+                #[cfg(not(target_os = "emscripten"))]
                 if false {
                     let _: &dyn ::core::future::Future<Output = #output_type> = &body;
                 }
@@ -562,12 +661,10 @@ fn parse_knobs(mut input: ItemFn, is_test: bool, config: FinalConfig) -> TokenSt
         };
 
         quote! {
+            #[cfg(not(target_os = "emscripten"))]
             let body = async #body;
             // Compile-time assertion that the future's output matches the return type.
-            let body = {
-                #check_block
-                body
-            };
+            #check_block
         }
     };
 

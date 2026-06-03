@@ -203,6 +203,7 @@ impl Interest {
     }
 
     // This function must be crate-private to avoid exposing a `mio` dependency.
+    #[cfg(not(target_os = "emscripten"))]
     pub(crate) fn to_mio(self) -> mio::Interest {
         fn mio_add(wrapped: &mut Option<mio::Interest>, add: mio::Interest) {
             match wrapped {

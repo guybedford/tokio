@@ -23,7 +23,13 @@ pub mod task;
 /// For more information, see the documentation for
 /// [`tokio::runtime::Runtime::block_on`][runtime-block-on].
 ///
+/// On `wasm32-unknown-emscripten` the main thread can't block on the event loop,
+/// so this polls once with a no-op waker: ready futures (mocks, pure
+/// computation) complete; ones that must yield (timers, I/O) panic — use
+/// `#[tokio::test]` for those.
+///
 /// [runtime-block-on]: https://docs.rs/tokio/1.3.0/tokio/runtime/struct.Runtime.html#method.block_on
+#[cfg(not(target_os = "emscripten"))]
 pub fn block_on<F: std::future::Future>(future: F) -> F::Output {
     use tokio::runtime;
 
@@ -33,4 +39,31 @@ pub fn block_on<F: std::future::Future>(future: F) -> F::Output {
         .unwrap();
 
     rt.block_on(future)
+}
+
+/// Emscripten variant — see the native [`block_on`] doc for the contract
+/// difference.
+#[cfg(target_os = "emscripten")]
+pub fn block_on<F: std::future::Future>(future: F) -> F::Output {
+    use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+
+    const VTABLE: RawWakerVTable = RawWakerVTable::new(
+        |_| RawWaker::new(std::ptr::null(), &VTABLE),
+        |_| {},
+        |_| {},
+        |_| {},
+    );
+    // SAFETY: vtable entries are valid no-ops.
+    let waker = unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &VTABLE)) };
+    let mut cx = Context::from_waker(&waker);
+
+    let mut future = Box::pin(future);
+    match future.as_mut().poll(&mut cx) {
+        Poll::Ready(output) => output,
+        Poll::Pending => panic!(
+            "tokio_test::block_on: future returned Pending on emscripten. \
+             The main thread cannot block on JS event-loop wakeups; use #[tokio::test] \
+             for futures that need timers/network I/O."
+        ),
+    }
 }

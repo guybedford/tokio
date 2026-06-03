@@ -2,7 +2,13 @@ use crate::io::interest::Interest;
 use crate::runtime::io::Registration;
 use crate::runtime::scheduler;
 
+// The reactor source bound. On mio platforms it is the `mio::event::Source`
+// trait; on emscripten (no mio) the reactor registers by raw fd, so the bound is
+// `AsRawFd` and the concrete source is `runtime::io::emscripten::Source`.
+#[cfg(not(target_os = "emscripten"))]
 use mio::event::Source;
+#[cfg(target_os = "emscripten")]
+use std::os::fd::AsRawFd as Source;
 use std::fmt;
 use std::io;
 use std::ops::Deref;
@@ -112,12 +118,17 @@ impl<E: Source> PollEvented<E> {
     }
 
     #[track_caller]
+    #[cfg_attr(target_os = "emscripten", allow(unused_mut))] // `&mut io` only on mio
     pub(crate) fn new_with_interest_and_handle(
         mut io: E,
         interest: Interest,
         handle: scheduler::Handle,
     ) -> io::Result<Self> {
+        #[cfg(not(target_os = "emscripten"))]
         let registration = Registration::new_with_interest_and_handle(&mut io, interest, handle)?;
+        #[cfg(target_os = "emscripten")]
+        let registration =
+            Registration::new_with_interest_and_handle(io.as_raw_fd(), interest, handle)?;
         Ok(Self {
             io: Some(io),
             registration,
@@ -132,9 +143,13 @@ impl<E: Source> PollEvented<E> {
 
     /// Deregisters the inner io from the registration and returns a Result containing the inner io.
     #[cfg(any(feature = "net", feature = "process"))]
+    #[cfg_attr(target_os = "emscripten", allow(dead_code, unused_mut))] // not-yet-ported types; `&mut` only on mio
     pub(crate) fn into_inner(mut self) -> io::Result<E> {
         let mut inner = self.io.take().unwrap(); // As io shouldn't ever be None, just unwrap here.
+        #[cfg(not(target_os = "emscripten"))]
         self.registration.deregister(&mut inner)?;
+        #[cfg(target_os = "emscripten")]
+        self.registration.deregister(inner.as_raw_fd())?;
         Ok(inner)
     }
 
@@ -310,10 +325,14 @@ impl<E: Source + fmt::Debug> fmt::Debug for PollEvented<E> {
 }
 
 impl<E: Source> Drop for PollEvented<E> {
+    #[cfg_attr(target_os = "emscripten", allow(unused_mut))] // `&mut io` only on mio
     fn drop(&mut self) {
         if let Some(mut io) = self.io.take() {
             // Ignore errors
+            #[cfg(not(target_os = "emscripten"))]
             let _ = self.registration.deregister(&mut io);
+            #[cfg(target_os = "emscripten")]
+            let _ = self.registration.deregister(io.as_raw_fd());
         }
     }
 }

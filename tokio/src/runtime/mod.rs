@@ -415,11 +415,8 @@
 mod tests;
 
 pub(crate) mod context;
-
 pub(crate) mod park;
-
 pub(crate) mod driver;
-
 pub(crate) mod scheduler;
 
 cfg_io_driver_impl! {
@@ -438,6 +435,8 @@ pub(crate) enum TimerFlavor {
     Alternative,
 }
 
+// Timer driver and time types. The wheel is shared with emscripten; only the
+// park primitive diverges.
 cfg_time! {
     pub(crate) mod time;
 
@@ -535,6 +534,7 @@ cfg_signal_internal_and_unix! {
     pub(crate) mod signal;
 }
 
+// Core runtime infrastructure, shared by every scheduler including emscripten's.
 cfg_rt! {
     pub(crate) mod task;
 
@@ -550,6 +550,8 @@ cfg_rt! {
     }
 
     cfg_fs! {
+        // Emscripten's `fs` uses the inline blocking shim, not the pool.
+        #[cfg_attr(target_os = "emscripten", allow(unused_imports))]
         pub(crate) use blocking::spawn_mandatory_blocking;
     }
 

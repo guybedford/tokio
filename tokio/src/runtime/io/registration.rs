@@ -4,7 +4,10 @@ use crate::io::interest::Interest;
 use crate::runtime::io::{Direction, Handle, ReadyEvent, ScheduledIo};
 use crate::runtime::scheduler;
 
+#[cfg(not(target_os = "emscripten"))]
 use mio::event::Source;
+#[cfg(target_os = "emscripten")]
+use std::os::fd::RawFd;
 use std::io;
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
@@ -69,6 +72,7 @@ impl Registration {
     ///
     /// - `Ok` if the registration happened successfully
     /// - `Err` if an error was encountered during registration
+    #[cfg(not(target_os = "emscripten"))]
     #[track_caller]
     pub(crate) fn new_with_interest_and_handle(
         io: &mut impl Source,
@@ -76,6 +80,20 @@ impl Registration {
         handle: scheduler::Handle,
     ) -> io::Result<Registration> {
         let shared = handle.driver().io().add_source(io, interest)?;
+
+        Ok(Registration { handle, shared })
+    }
+
+    /// Emscripten registers by raw fd (its reactor keys on the socket fd), not a
+    /// mio source.
+    #[cfg(target_os = "emscripten")]
+    #[track_caller]
+    pub(crate) fn new_with_interest_and_handle(
+        fd: RawFd,
+        interest: Interest,
+        handle: scheduler::Handle,
+    ) -> io::Result<Registration> {
+        let shared = handle.driver().io().add_source(fd, interest)?;
 
         Ok(Registration { handle, shared })
     }
@@ -96,8 +114,14 @@ impl Registration {
     /// no longer result in notifications getting sent for this registration.
     ///
     /// `Err` is returned if an error is encountered.
+    #[cfg(not(target_os = "emscripten"))]
     pub(crate) fn deregister(&mut self, io: &mut impl Source) -> io::Result<()> {
         self.handle().deregister_source(&self.shared, io)
+    }
+
+    #[cfg(target_os = "emscripten")]
+    pub(crate) fn deregister(&mut self, fd: RawFd) -> io::Result<()> {
+        self.handle().deregister_source(fd, &self.shared)
     }
 
     pub(crate) fn clear_readiness(&self, event: ReadyEvent) {

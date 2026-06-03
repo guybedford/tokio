@@ -7,6 +7,7 @@
     feature = "rt",
     feature = "io-util",
     not(all(target_os = "wasi", target_env = "p1")),
+    not(target_os = "emscripten"),
     not(miri)
 ))]
 

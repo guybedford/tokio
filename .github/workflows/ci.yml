@@ -1162,6 +1162,51 @@ jobs:
           RUSTFLAGS: --cfg tokio_unstable
           CARGO_TARGET_WASM32_WASIP2_RUNNER: wasmtime run -Sinherit-network
 
+  wasm32-unknown-emscripten:
+    name: test tokio for wasm32-unknown-emscripten
+    needs: basics
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust ${{ env.rust_stable }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.rust_stable }}
+          targets: wasm32-unknown-emscripten
+
+      - name: Install Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 'latest'
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Emscripten runtime support is experimental and gated behind
+      # `--cfg tokio_unstable` (see the emscripten module docs).
+      - name: Test tokio for emscripten
+        run: cargo test -p tokio --target wasm32-unknown-emscripten --features "rt,time,sync,macros,fs,io-util,io-std,test-util" --tests
+        working-directory: tokio
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: "node ci/emscripten_entry.mjs"
+          RUSTFLAGS: "--cfg tokio_unstable -C link-args=-sALLOW_MEMORY_GROWTH=1 -C link-args=-sMODULARIZE=1 -C link-args=-sEXPORT_ES6=1 -C link-args=-sEXIT_RUNTIME=1 -C link-arg=--js-library=${{ github.workspace }}/tokio/src/emscripten/test_worker.js"
+
+      # The `net` reactor tests drive real sockets over emscripten's `ws`-backed
+      # sockfs against an echo server hosted by the runner, so `ws` must be
+      # resolvable both by the runner and by the emscripten binary (which lives
+      # under the workspace `target/`). Install it at the workspace root so node's
+      # upward resolution finds it from both. The whole `--tests` set runs here:
+      # tests that can't work on emscripten gate themselves out via
+      # `#![cfg(not(target_os = "emscripten"))]`, so no per-test whitelist.
+      - name: Install ws for the emscripten socket test
+        run: npm install ws
+
+      - name: Test tokio for emscripten (net)
+        run: cargo test -p tokio --target wasm32-unknown-emscripten --features "rt,time,sync,macros,fs,io-util,io-std,test-util,net" --tests
+        working-directory: tokio
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: "node ci/emscripten_socket_entry.mjs"
+          RUSTFLAGS: "--cfg tokio_unstable -C link-args=-sALLOW_MEMORY_GROWTH=1 -C link-args=-sMODULARIZE=1 -C link-args=-sEXPORT_ES6=1 -C link-args=-sEXIT_RUNTIME=1 -C link-arg=--js-library=${{ github.workspace }}/tokio/src/emscripten/test_worker.js"
+
   check-external-types:
     name: check-external-types (${{ matrix.os }})
     needs: basics

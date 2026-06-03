@@ -1661,6 +1661,26 @@ impl Builder {
         ))
     }
 
+    /// The emscripten hosted event-loop runtime: a thread-local `current_thread`
+    /// scheduler wrapped in the cooperatively-driven [`HostedEventLoop`] scheduler.
+    ///
+    /// [`HostedEventLoop`]: crate::runtime::scheduler::HostedEventLoop
+    #[cfg(target_os = "emscripten")]
+    pub(crate) fn build_hosted_event_loop_runtime(&mut self) -> io::Result<LocalRuntime> {
+        use crate::runtime::local_runtime::LocalRuntimeScheduler;
+        use crate::runtime::scheduler::HostedEventLoop;
+
+        let tid = std::thread::current().id();
+        let (scheduler, handle, blocking_pool) =
+            self.build_current_thread_runtime_components(Some(tid))?;
+
+        Ok(LocalRuntime::from_parts(
+            LocalRuntimeScheduler::HostedEventLoop(HostedEventLoop::new(scheduler)),
+            handle,
+            blocking_pool,
+        ))
+    }
+
     fn build_current_thread_runtime_components(
         &mut self,
         local_tid: Option<ThreadId>,

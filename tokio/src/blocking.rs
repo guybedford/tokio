@@ -1,12 +1,39 @@
-cfg_rt! {
-    pub(crate) use crate::runtime::spawn_blocking;
+// Native `rt`: the threadpool-backed `spawn_blocking`. Emscripten has no OS
+// threads, so it gets the shim below.
+#[cfg(all(feature = "rt", not(target_os = "emscripten")))]
+pub(crate) use crate::runtime::spawn_blocking;
+#[cfg(all(feature = "rt", not(target_os = "emscripten")))]
+pub(crate) use crate::task::JoinHandle;
 
-    cfg_fs! {
-        #[allow(unused_imports)]
-        pub(crate) use crate::runtime::spawn_mandatory_blocking;
+#[cfg(all(feature = "rt", not(target_os = "emscripten"), feature = "fs"))]
+#[allow(unused_imports)]
+pub(crate) use crate::runtime::spawn_mandatory_blocking;
+
+// Emscripten + `rt`: no threadpool, so run the closure as an ordinary spawned
+// task and return its `JoinHandle` (callers like `fs`/`io-std` are unchanged;
+// emscripten's blocking syscalls complete synchronously when polled). Running it
+// inside the task gives it a task context, so `task::id()` etc. match native.
+cfg_rt_emscripten! {
+    pub(crate) use crate::task::JoinHandle;
+
+    pub(crate) fn spawn_blocking<F, R>(f: F) -> JoinHandle<R>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        crate::runtime::Handle::current().spawn(async move { f() })
     }
 
-    pub(crate) use crate::task::JoinHandle;
+    cfg_fs! {
+        #[allow(dead_code)]
+        pub(crate) fn spawn_mandatory_blocking<F, R>(f: F) -> Option<JoinHandle<R>>
+        where
+            F: FnOnce() -> R + Send + 'static,
+            R: Send + 'static,
+        {
+            Some(spawn_blocking(f))
+        }
+    }
 }
 
 cfg_not_rt! {

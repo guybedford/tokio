@@ -3,6 +3,7 @@
 use crate::loom::sync::atomic::AtomicUsize;
 use crate::loom::sync::{Arc, Condvar, Mutex};
 
+#[cfg_attr(target_os = "emscripten", allow(unused_imports))] // park is unreachable on emscripten
 use std::sync::atomic::Ordering::SeqCst;
 use std::time::Duration;
 
@@ -19,13 +20,18 @@ pub(crate) struct UnparkThread {
 
 #[derive(Debug)]
 struct Inner {
+    #[cfg_attr(target_os = "emscripten", allow(dead_code))]
     state: AtomicUsize,
+    #[cfg_attr(target_os = "emscripten", allow(dead_code))]
     mutex: Mutex<()>,
     condvar: Condvar,
 }
 
+#[cfg_attr(target_os = "emscripten", allow(dead_code))]
 const EMPTY: usize = 0;
+#[cfg_attr(target_os = "emscripten", allow(dead_code))]
 const PARKED: usize = 1;
+#[cfg_attr(target_os = "emscripten", allow(dead_code))]
 const NOTIFIED: usize = 2;
 
 tokio_thread_local! {
@@ -76,6 +82,23 @@ impl ParkThread {
 // ==== impl Inner ====
 
 impl Inner {
+    #[cfg(target_os = "emscripten")]
+    fn park(&self) {
+        unreachable!(
+            "ParkThread::park is not reachable on emscripten; the schedule loop \
+             never enters the native park path"
+        );
+    }
+
+    #[cfg(target_os = "emscripten")]
+    fn park_timeout(&self, _dur: Duration) {
+        unreachable!(
+            "ParkThread::park_timeout is not reachable on emscripten; the schedule \
+             loop never enters the native park path"
+        );
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
     fn park(&self) {
         // If we were previously notified then we consume this notification and
         // return quickly.
@@ -124,6 +147,7 @@ impl Inner {
     }
 
     /// Parks the current thread for at most `dur`.
+    #[cfg(not(target_os = "emscripten"))]
     fn park_timeout(&self, dur: Duration) {
         // Like `park` above we have a fast path for an already-notified thread,
         // and afterwards we start coordinating for a sleep. Return quickly.
@@ -174,6 +198,16 @@ impl Inner {
         }
     }
 
+    #[cfg(target_os = "emscripten")]
+    fn unpark(&self) {
+        // Externally-scheduled tasks (e.g. wakers fired from outside the
+        // schedule context) must cause our setTimeout-driven tick chain to
+        // re-fire. Equivalent to the native condvar's notification waking
+        // the parked thread.
+        crate::emscripten::event_loop::drive();
+    }
+
+    #[cfg(not(target_os = "emscripten"))]
     fn unpark(&self) {
         // To ensure the unparked thread will observe any writes we made before
         // this call, we must perform a release operation that `park` can

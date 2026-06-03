@@ -118,6 +118,8 @@ impl RegistrationSet {
         // SAFETY: Pointers into an Arc are never null.
         let io = unsafe { NonNull::new_unchecked(Arc::as_ptr(io).cast_mut()) };
 
+        // The emscripten reactor has no mio token to unexpose.
+        #[cfg(not(target_os = "emscripten"))]
         super::EXPOSE_IO.unexpose_provenance(io.as_ptr());
         // SAFETY: the caller guarantees that `io` is part of this list.
         let _ = unsafe { synced.registrations.remove(io) };

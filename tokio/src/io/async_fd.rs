@@ -2,6 +2,7 @@ use crate::io::{Interest, Ready};
 use crate::runtime::io::{ReadyEvent, Registration};
 use crate::runtime::scheduler;
 
+#[cfg(not(target_os = "emscripten"))]
 use mio::unix::SourceFd;
 use std::error::Error;
 use std::fmt;
@@ -309,7 +310,13 @@ impl<T: AsRawFd> AsyncFd<T> {
     ) -> Result<Self, AsyncFdTryNewError<T>> {
         let fd = inner.as_raw_fd();
 
-        match Registration::new_with_interest_and_handle(&mut SourceFd(&fd), interest, handle) {
+        #[cfg(not(target_os = "emscripten"))]
+        let registration =
+            Registration::new_with_interest_and_handle(&mut SourceFd(&fd), interest, handle);
+        #[cfg(target_os = "emscripten")]
+        let registration = Registration::new_with_interest_and_handle(fd, interest, handle);
+
+        match registration {
             Ok(registration) => Ok(AsyncFd {
                 registration,
                 inner: Some(inner),
@@ -334,7 +341,10 @@ impl<T: AsRawFd> AsyncFd<T> {
         let inner = self.inner.take()?;
         let fd = inner.as_raw_fd();
 
+        #[cfg(not(target_os = "emscripten"))]
         let _ = self.registration.deregister(&mut SourceFd(&fd));
+        #[cfg(target_os = "emscripten")]
+        let _ = self.registration.deregister(fd);
 
         Some(inner)
     }

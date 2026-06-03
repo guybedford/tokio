@@ -2,6 +2,8 @@
 
 use crate::runtime::blocking::BlockingPool;
 use crate::runtime::scheduler::CurrentThread;
+#[cfg(target_os = "emscripten")]
+use crate::runtime::scheduler::HostedEventLoop;
 use crate::runtime::{context, Builder, EnterGuard, Handle, BOX_FUTURE_THRESHOLD};
 use crate::task::JoinHandle;
 
@@ -48,6 +50,9 @@ pub struct LocalRuntime {
 pub(crate) enum LocalRuntimeScheduler {
     /// Execute all tasks on the current-thread.
     CurrentThread(CurrentThread),
+    /// The emscripten hosted event loop scheduler (cooperatively host-driven).
+    #[cfg(target_os = "emscripten")]
+    HostedEventLoop(HostedEventLoop),
 }
 
 impl LocalRuntime {
@@ -118,6 +123,27 @@ impl LocalRuntime {
     /// ```
     pub fn handle(&self) -> &Handle {
         &self.handle
+    }
+
+    /// Cooperatively advance the runtime without blocking, for embedding in a
+    /// foreign event loop (here, emscripten's host JS loop). Runs ready tasks +
+    /// fired timers and harvests I/O readiness for at most `budget` polls, then
+    /// returns what should wake it next ([`Driven`]). The non-blocking
+    /// counterpart of [`block_on`](Self::block_on): the caller, not the runtime,
+    /// owns the thread and decides when to re-drive.
+    ///
+    /// Emscripten-gated for now — a "double experiment" alongside the host
+    /// runtime — pending a general design for externally-driven runtimes.
+    ///
+    /// [`Driven`]: crate::runtime::scheduler::Driven
+    #[cfg(target_os = "emscripten")]
+    pub(crate) fn drive(&self, budget: u32) -> crate::runtime::scheduler::Driven {
+        match &self.scheduler {
+            LocalRuntimeScheduler::HostedEventLoop(ev) => ev.drive(&self.handle, budget),
+            LocalRuntimeScheduler::CurrentThread(_) => {
+                unreachable!("the event-loop runtime uses the `HostedEventLoop` scheduler")
+            }
+        }
     }
 
     /// Spawns a task on the runtime.
@@ -253,10 +279,10 @@ impl LocalRuntime {
 
         let _enter = self.enter();
 
-        if let LocalRuntimeScheduler::CurrentThread(exec) = &self.scheduler {
-            exec.block_on(&self.handle.inner, future)
-        } else {
-            unreachable!("LocalRuntime only supports current_thread")
+        match &self.scheduler {
+            LocalRuntimeScheduler::CurrentThread(exec) => exec.block_on(&self.handle.inner, future),
+            #[cfg(target_os = "emscripten")]
+            LocalRuntimeScheduler::HostedEventLoop(ev) => ev.block_on(&self.handle.inner, future),
         }
     }
 
@@ -385,13 +411,17 @@ impl LocalRuntime {
 
 impl Drop for LocalRuntime {
     fn drop(&mut self) {
-        if let LocalRuntimeScheduler::CurrentThread(current_thread) = &mut self.scheduler {
-            // This ensures that tasks spawned on the current-thread
-            // runtime are dropped inside the runtime's context.
-            let _guard = context::try_set_current(&self.handle.inner);
-            current_thread.shutdown(&self.handle.inner);
-        } else {
-            unreachable!("LocalRuntime only supports current-thread")
+        // This ensures that tasks spawned on the runtime are dropped inside the
+        // runtime's context.
+        let _guard = context::try_set_current(&self.handle.inner);
+        match &mut self.scheduler {
+            LocalRuntimeScheduler::CurrentThread(current_thread) => {
+                current_thread.shutdown(&self.handle.inner);
+            }
+            #[cfg(target_os = "emscripten")]
+            LocalRuntimeScheduler::HostedEventLoop(event_loop) => {
+                event_loop.shutdown(&self.handle.inner);
+            }
         }
     }
 }

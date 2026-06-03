@@ -340,6 +340,18 @@ macro_rules! cfg_net {
     }
 }
 
+// Like `cfg_net!` but also excludes emscripten, whose mio/socket2-backed socket
+// types aren't implemented over the reactor yet (only `AsyncFd` is).
+macro_rules! cfg_net_not_emscripten {
+    ($($item:item)*) => {
+        $(
+            #[cfg(all(feature = "net", not(target_os = "emscripten")))]
+            #[cfg_attr(docsrs, doc(cfg(feature = "net")))]
+            $item
+        )*
+    }
+}
+
 macro_rules! cfg_net_or_uring {
     ($($item:item)*) => {
         $(
@@ -381,6 +393,18 @@ macro_rules! cfg_net_unix {
     }
 }
 
+// Like `cfg_net_unix!` but also excludes emscripten (`unix`, but no AF_UNIX over
+// the reactor).
+macro_rules! cfg_net_unix_not_emscripten {
+    ($($item:item)*) => {
+        $(
+            #[cfg(all(unix, feature = "net", not(target_os = "emscripten")))]
+            #[cfg_attr(docsrs, doc(cfg(all(unix, feature = "net"))))]
+            $item
+        )*
+    }
+}
+
 macro_rules! cfg_net_windows {
     ($($item:item)*) => {
         $(
@@ -398,6 +422,9 @@ macro_rules! cfg_process {
             #[cfg_attr(docsrs, doc(cfg(feature = "process")))]
             #[cfg(not(loom))]
             #[cfg(not(target_os = "wasi"))]
+            // emscripten has no `fork`/`exec`; `process` is inert there so `full`
+            // still compiles (see the lib.rs "constrained full" note).
+            #[cfg(not(target_os = "emscripten"))]
             $item
         )*
     }
@@ -414,7 +441,10 @@ macro_rules! cfg_process_driver {
 macro_rules! cfg_not_process_driver {
     ($($item:item)*) => {
         $(
-            #[cfg(not(all(unix, not(loom), feature = "process")))]
+            #[cfg(any(
+                not(all(unix, not(loom), feature = "process")),
+                target_os = "emscripten",
+            ))]
             $item
         )*
     }
@@ -427,6 +457,8 @@ macro_rules! cfg_signal {
             #[cfg_attr(docsrs, doc(cfg(feature = "signal")))]
             #[cfg(not(loom))]
             #[cfg(not(target_os = "wasi"))]
+            // No kernel signal delivery on emscripten; inert there.
+            #[cfg(not(target_os = "emscripten"))]
             $item
         )*
     }
@@ -437,6 +469,7 @@ macro_rules! cfg_signal_internal {
         $(
             #[cfg(any(feature = "signal", all(unix, feature = "process")))]
             #[cfg(not(loom))]
+            #[cfg(not(target_os = "emscripten"))]
             $item
         )*
     }
@@ -452,7 +485,7 @@ macro_rules! cfg_signal_internal_and_unix {
 macro_rules! cfg_not_signal_internal {
     ($($item:item)*) => {
         $(
-            #[cfg(any(loom, not(unix), not(any(feature = "signal", all(unix, feature = "process")))))]
+            #[cfg(any(loom, not(unix), target_os = "emscripten", not(any(feature = "signal", all(unix, feature = "process")))))]
             $item
         )*
     }
@@ -715,7 +748,7 @@ macro_rules! cfg_not_wasip1 {
 macro_rules! cfg_is_wasm_not_wasi {
     ($($item:item)*) => {
         $(
-            #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+            #[cfg(all(target_family = "wasm", target_os = "unknown"))]
             $item
         )*
     }
@@ -748,4 +781,36 @@ macro_rules! cfg_io_uring {
             $item
         )*
     };
+}
+
+/// Enables emscripten-specific code.
+macro_rules! cfg_emscripten {
+    ($($item:item)*) => {
+        $(
+            #[cfg(target_os = "emscripten")]
+            #[cfg_attr(docsrs, doc(cfg(target_os = "emscripten")))]
+            $item
+        )*
+    }
+}
+
+/// Enables code for non-emscripten targets.
+macro_rules! cfg_not_emscripten {
+    ($($item:item)*) => {
+        $(
+            #[cfg(not(target_os = "emscripten"))]
+            $item
+        )*
+    }
+}
+
+/// Enables code requiring both the `rt` feature and the emscripten target.
+macro_rules! cfg_rt_emscripten {
+    ($($item:item)*) => {
+        $(
+            #[cfg(all(feature = "rt", target_os = "emscripten"))]
+            #[cfg_attr(docsrs, doc(cfg(all(feature = "rt", target_os = "emscripten"))))]
+            $item
+        )*
+    }
 }

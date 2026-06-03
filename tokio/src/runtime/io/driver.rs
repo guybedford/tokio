@@ -8,20 +8,32 @@ cfg_io_uring! {
     use crate::sync::OnceCell;
 }
 
-use crate::io::interest::Interest;
 use crate::io::ready::Ready;
+
+#[cfg(not(target_os = "emscripten"))]
+use crate::io::interest::Interest;
+#[cfg(not(target_os = "emscripten"))]
 use crate::loom::sync::Mutex;
+#[cfg(not(target_os = "emscripten"))]
 use crate::runtime::driver;
+#[cfg(not(target_os = "emscripten"))]
 use crate::runtime::io::registration_set;
+#[cfg(not(target_os = "emscripten"))]
 use crate::runtime::io::{IoDriverMetrics, RegistrationSet, ScheduledIo};
 
+#[cfg(not(target_os = "emscripten"))]
 use mio::event::Source;
+#[cfg(not(target_os = "emscripten"))]
 use std::fmt;
+#[cfg(not(target_os = "emscripten"))]
 use std::io;
+#[cfg(not(target_os = "emscripten"))]
 use std::sync::Arc;
+#[cfg(not(target_os = "emscripten"))]
 use std::time::Duration;
 
 /// I/O driver, backed by Mio.
+#[cfg(not(target_os = "emscripten"))]
 pub(crate) struct Driver {
     /// True when an event with the signal token is received
     signal_ready: bool,
@@ -34,6 +46,7 @@ pub(crate) struct Driver {
 }
 
 /// A reference to an I/O driver.
+#[cfg(not(target_os = "emscripten"))]
 pub(crate) struct Handle {
     /// Registers I/O resources.
     registry: mio::Registry,
@@ -77,17 +90,16 @@ pub(crate) struct ReadyEvent {
     pub(super) is_shutdown: bool,
 }
 
-cfg_net_unix!(
-    impl ReadyEvent {
-        pub(crate) fn with_ready(&self, ready: Ready) -> Self {
-            Self {
-                ready,
-                tick: self.tick,
-                is_shutdown: self.is_shutdown,
-            }
+#[cfg(all(unix, feature = "net"))]
+impl ReadyEvent {
+    pub(crate) fn with_ready(&self, ready: Ready) -> Self {
+        Self {
+            ready,
+            tick: self.tick,
+            is_shutdown: self.is_shutdown,
         }
     }
-);
+}
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub(super) enum Direction {
@@ -100,9 +112,12 @@ pub(super) enum Tick {
     Clear(u8),
 }
 
+#[cfg(not(target_os = "emscripten"))]
 const TOKEN_WAKEUP: mio::Token = mio::Token(0);
+#[cfg(not(target_os = "emscripten"))]
 const TOKEN_SIGNAL: mio::Token = mio::Token(1);
 
+#[cfg(not(target_os = "emscripten"))]
 fn _assert_kinds() {
     fn _assert<T: Send + Sync>() {}
 
@@ -111,6 +126,7 @@ fn _assert_kinds() {
 
 // ===== impl Driver =====
 
+#[cfg(not(target_os = "emscripten"))]
 impl Driver {
     /// Creates a new event loop, returning any error that happened during the
     /// creation.
@@ -239,12 +255,14 @@ impl Driver {
     }
 }
 
+#[cfg(not(target_os = "emscripten"))]
 impl fmt::Debug for Driver {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Driver")
     }
 }
 
+#[cfg(not(target_os = "emscripten"))]
 impl Handle {
     /// Forces a reactor blocked in a call to `turn` to wakeup, or otherwise
     /// makes the next call to `turn` return immediately.
@@ -318,6 +336,7 @@ impl Handle {
     }
 }
 
+#[cfg(not(target_os = "emscripten"))]
 impl fmt::Debug for Handle {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Handle")
