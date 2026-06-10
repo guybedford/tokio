@@ -203,7 +203,12 @@ impl Reactor {
         let io = Reactor::with(|r| r.fds.get(&fd).cloned());
         if let Some(io) = io {
             io.set_readiness(Tick::Set, |curr| curr | ready);
+            // Latch the drive flag while running wakers so their unparks record
+            // a pending pick-up; the synchronous `drive` below consumes it,
+            // keeping the socket fast path a single drive (no host-turn hop).
+            let guard = crate::emscripten::event_loop::enter_drive();
             io.wake(ready);
+            drop(guard);
         }
         drive();
     }
@@ -299,7 +304,12 @@ impl Driver {
     pub(crate) fn shutdown(&mut self, rt_handle: &driver::Handle) {
         let handle = rt_handle.io();
         let ios = handle.registrations.shutdown(&mut handle.synced.lock());
-        Reactor::with(|r| r.fds.clear());
+        // Remove only this driver's fds: the thread-local map is shared with
+        // any other runtime on the thread (notably the persistent event-loop
+        // runtime), whose registrations must survive this one's teardown.
+        let own: std::collections::HashSet<*const ScheduledIo> =
+            ios.iter().map(Arc::as_ptr).collect();
+        Reactor::with(|r| r.fds.retain(|_, io| !own.contains(&Arc::as_ptr(io))));
         for io in ios {
             io.shutdown();
         }
@@ -315,8 +325,9 @@ impl fmt::Debug for Driver {
 impl Handle {
     /// External wakes reach the scheduler through the driver's `unpark`. With no
     /// reactor thread to wake, request a pick-up so the woken task is polled.
+    /// Never drives inline (`Waker::wake` stays O(1) from host context).
     pub(crate) fn unpark(&self) {
-        drive();
+        crate::emscripten::event_loop::request_pickup();
     }
 
     /// Register a socket fd. A second registration of a still-registered fd

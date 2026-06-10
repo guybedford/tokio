@@ -114,7 +114,11 @@ impl AsyncRead for TcpStream {
 }
 
 impl AsyncWrite for TcpStream {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
         self.inner.poll_write(cx, buf)
     }
 
@@ -143,7 +147,9 @@ impl AsyncWrite for TcpStream {
 
 impl fmt::Debug for TcpStream {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TcpStream").field("fd", &self.inner.as_raw_fd()).finish()
+        f.debug_struct("TcpStream")
+            .field("fd", &self.inner.as_raw_fd())
+            .finish()
     }
 }
 

@@ -60,9 +60,9 @@ cfg_net_not_emscripten! {
 
 // Shared plumbing for the emscripten socket types (TCP + Unix).
 #[cfg(all(feature = "net", target_os = "emscripten"))]
-mod reactor_stream;
-#[cfg(all(feature = "net", target_os = "emscripten"))]
 mod emscripten;
+#[cfg(all(feature = "net", target_os = "emscripten"))]
+mod reactor_stream;
 #[cfg(all(feature = "net", target_os = "emscripten"))]
 pub use emscripten::TcpStream;
 

@@ -82,19 +82,27 @@ impl ParkThread {
 // ==== impl Inner ====
 
 impl Inner {
+    // Reachable from user code: `Handle::block_on`, `blocking_recv`,
+    // `blocking_lock`, etc. all park here when their future suspends. The host
+    // event loop cannot be blocked, so fail with the same actionable message as
+    // the hosted `block_on`.
     #[cfg(target_os = "emscripten")]
     fn park(&self) {
-        unreachable!(
-            "ParkThread::park is not reachable on emscripten; the schedule loop \
-             never enters the native park path"
+        panic!(
+            "Cannot block the current thread on single-threaded emscripten: this \
+             blocking API would have to suspend the host event loop. Use the \
+             async equivalent (`.await` instead of `Handle::block_on` / \
+             `blocking_*` methods) driven via the event-loop runtime."
         );
     }
 
     #[cfg(target_os = "emscripten")]
     fn park_timeout(&self, _dur: Duration) {
-        unreachable!(
-            "ParkThread::park_timeout is not reachable on emscripten; the schedule \
-             loop never enters the native park path"
+        panic!(
+            "Cannot block the current thread on single-threaded emscripten: this \
+             blocking API would have to suspend the host event loop. Use the \
+             async equivalent (`.await` instead of `Handle::block_on` / \
+             `blocking_*` methods) driven via the event-loop runtime."
         );
     }
 
@@ -200,11 +208,11 @@ impl Inner {
 
     #[cfg(target_os = "emscripten")]
     fn unpark(&self) {
-        // Externally-scheduled tasks (e.g. wakers fired from outside the
-        // schedule context) must cause our setTimeout-driven tick chain to
-        // re-fire. Equivalent to the native condvar's notification waking
-        // the parked thread.
-        crate::emscripten::event_loop::drive();
+        // A wake from outside the schedule context: request a pick-up of the
+        // event-loop runtime (the analogue of the native condvar notify).
+        // Never drives inline, so `Waker::wake` stays O(1) and can't reenter
+        // user code on the caller's stack.
+        crate::emscripten::event_loop::request_pickup();
     }
 
     #[cfg(not(target_os = "emscripten"))]

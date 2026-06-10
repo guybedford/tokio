@@ -49,6 +49,11 @@ struct EventLoop {
     /// readiness for the active fixed point or a later pick-up rather than
     /// nesting a drive.
     in_drive: Cell<bool>,
+    /// A pick-up was requested while a drive (or `block_on`) held `in_drive`.
+    /// Consumed by the next drive (its fixed point observes the queued work) or
+    /// converted to a `setTimeout(0)` when the latch holder exits — so a wake
+    /// arriving under a foreign `block_on` is never dropped.
+    pending: Cell<bool>,
     /// True while a keepalive ref stops emscripten tearing the runtime down
     /// between turns; released once idle.
     keepalive: Cell<bool>,
@@ -63,6 +68,7 @@ impl EventLoop {
             runtime: OnceCell::new(),
             armed: Cell::new(None),
             in_drive: Cell::new(false),
+            pending: Cell::new(false),
             keepalive: Cell::new(false),
             start_paused: Cell::new(false),
         }
@@ -73,21 +79,63 @@ thread_local! {
     static EVENT_LOOP: EventLoop = const { EventLoop::new() };
 }
 
-/// Marks a drive on the stack for its lifetime, clearing it on drop (even across
-/// an unwind). Used by the host pick-up and by `block_on`, so a wake arriving
-/// mid-drive no-ops instead of nesting a drive.
-pub(crate) struct DriveGuard;
+/// Marks a drive on the stack for its lifetime, restoring the prior latch state
+/// on drop (even across an unwind). Used by the host pick-up, by `block_on`,
+/// and around reactor wake dispatch, so a wake arriving mid-drive latches a
+/// pending pick-up instead of nesting a drive.
+pub(crate) struct DriveGuard {
+    prev: bool,
+}
 
 impl Drop for DriveGuard {
     fn drop(&mut self) {
-        EVENT_LOOP.with(|el| el.in_drive.set(false));
+        EVENT_LOOP.with(|el| el.in_drive.set(self.prev));
     }
 }
 
 /// Enter a drive: set `in_drive` until the returned guard drops.
 pub(crate) fn enter_drive() -> DriveGuard {
-    EVENT_LOOP.with(|el| el.in_drive.set(true));
-    DriveGuard
+    DriveGuard {
+        prev: EVENT_LOOP.with(|el| el.in_drive.replace(true)),
+    }
+}
+
+/// Converts a pending pick-up into a `setTimeout(0)` on drop. Held (outermost)
+/// across `block_on`, whose fixed point only pumps its own runtime: an
+/// event-loop wake arriving under it must still get a host turn, including on
+/// the unwind path.
+pub(crate) struct PendingFlush;
+
+impl Drop for PendingFlush {
+    fn drop(&mut self) {
+        if EVENT_LOOP.with(|el| el.pending.take()) {
+            arm_timeout(0.0);
+        }
+    }
+}
+
+pub(crate) fn pending_flush() -> PendingFlush {
+    PendingFlush
+}
+
+/// Request that the event-loop runtime be driven: how a wake arriving from host
+/// context (a task scheduled or a waker fired outside any drive) reaches the
+/// scheduler. Never runs tasks on the caller's stack — `Waker::wake` stays O(1)
+/// and can't reenter user code. While a drive or `block_on` holds the latch the
+/// request is recorded for its exit; otherwise a `setTimeout(0)` pick-up is
+/// armed.
+pub(crate) fn request_pickup() {
+    let latched = EVENT_LOOP.with(|el| {
+        if el.in_drive.get() {
+            el.pending.set(true);
+            true
+        } else {
+            false
+        }
+    });
+    if !latched {
+        arm_timeout(0.0);
+    }
 }
 
 /// Set `start_paused` before the runtime is first built (mirrors
@@ -114,13 +162,16 @@ fn with_runtime<R>(f: impl FnOnce(&LocalRuntime) -> R) -> R {
 }
 
 /// Enqueues `future` as a root on this thread's event-loop runtime, delivering
-/// its outcome to `on_complete` once it resolves. **Does not drive it** — call
-/// [`drive`] to run scheduled work.
+/// its outcome to `on_complete` once it resolves. **Never runs it
+/// synchronously**: the root is queued only — call [`drive`] to run it before
+/// returning to the host (a `setTimeout(0)` pick-up is also armed, so the work
+/// is not lost if the caller doesn't), and `on_complete` is never invoked
+/// before `schedule` returns.
 ///
-/// Returns immediately. Any number of roots may be in flight, and the future
-/// need not be `Send` (single host thread). A panic in it is caught and
-/// delivered as `Err(JoinError)` rather than unwinding the driver, so embedders
-/// (e.g. the `#[wasm_bindgen(tokio)]` → `Promise` bridge) can map `Ok`/`Err` to
+/// Any number of roots may be in flight, and the future need not be `Send`
+/// (single host thread). A panic in it is caught and delivered as
+/// `Err(JoinError)` rather than unwinding the driver, so embedders (e.g. the
+/// `#[wasm_bindgen(tokio)]` → `Promise` bridge) can map `Ok`/`Err` to
 /// resolve/reject.
 pub fn schedule<F, C>(future: F, on_complete: C)
 where
@@ -164,6 +215,9 @@ where
 /// runtime, so a one-shot `schedule` + `drive` is self-sustaining.
 pub fn drive() -> bool {
     if EVENT_LOOP.with(|el| el.in_drive.get()) {
+        // Record the request: an event-loop drive's fixed point observes it; a
+        // foreign `block_on` does not, so its exit converts it to a pick-up.
+        EVENT_LOOP.with(|el| el.pending.set(true));
         return false;
     }
     drive_inner();
@@ -174,6 +228,10 @@ pub fn drive() -> bool {
 /// `setTimeout` for the next timer (or `setTimeout(0)` to yield), or, if idle,
 /// release the keepalive and let the host rest.
 fn drive_inner() {
+    // This drive satisfies any previously-requested pick-up: its fixed point
+    // observes everything queued so far.
+    EVENT_LOOP.with(|el| el.pending.set(false));
+
     let guard = enter_drive();
     let driven = with_runtime(|rt| rt.drive(HOST_DRIVE_BUDGET));
     drop(guard);
@@ -181,12 +239,22 @@ fn drive_inner() {
     match driven {
         Driven::Timer(ms) => arm_timeout(ms),
         Driven::Yield => arm_timeout(0.0),
+        // The core is checked out elsewhere; that holder re-arms on exit, so
+        // leave the timer and keepalive untouched.
+        Driven::Busy => {}
         Driven::Idle => {
             disarm_timeout();
             if EVENT_LOOP.with(|el| el.keepalive.replace(false)) {
                 unsafe { emscripten_runtime_keepalive_pop() };
             }
         }
+    }
+
+    // A pick-up requested during this drive came through a path the fixed
+    // point can't satisfy (e.g. `drive()` called under the latch); arm a fresh
+    // host turn rather than drop it. After Idle's disarm, so it survives.
+    if EVENT_LOOP.with(|el| el.pending.take()) {
+        arm_timeout(0.0);
     }
 }
 

@@ -93,12 +93,14 @@ impl UnixStream {
 
     /// Returns the local address.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        with_std::<std_net::UnixStream, _>(self.inner.as_raw_fd(), |s| s.local_addr()).map(SocketAddr::from)
+        with_std::<std_net::UnixStream, _>(self.inner.as_raw_fd(), |s| s.local_addr())
+            .map(SocketAddr::from)
     }
 
     /// Returns the peer address.
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
-        with_std::<std_net::UnixStream, _>(self.inner.as_raw_fd(), |s| s.peer_addr()).map(SocketAddr::from)
+        with_std::<std_net::UnixStream, _>(self.inner.as_raw_fd(), |s| s.peer_addr())
+            .map(SocketAddr::from)
     }
 
     /// Peer credentials are not available on emscripten.
@@ -238,7 +240,11 @@ impl AsyncRead for UnixStream {
 }
 
 impl AsyncWrite for UnixStream {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
         self.poll_write_priv(cx, buf)
     }
 
@@ -266,7 +272,9 @@ impl AsyncWrite for UnixStream {
 
 impl fmt::Debug for UnixStream {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("UnixStream").field("fd", &self.inner.as_raw_fd()).finish()
+        f.debug_struct("UnixStream")
+            .field("fd", &self.inner.as_raw_fd())
+            .finish()
     }
 }
 
@@ -344,7 +352,9 @@ impl UnixListener {
 
 impl fmt::Debug for UnixListener {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("UnixListener").field("fd", &self.inner.as_raw_fd()).finish()
+        f.debug_struct("UnixListener")
+            .field("fd", &self.inner.as_raw_fd())
+            .finish()
     }
 }
 
@@ -468,7 +478,9 @@ impl UnixDatagram {
 
 impl fmt::Debug for UnixDatagram {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("UnixDatagram").field("fd", &self.inner.as_raw_fd()).finish()
+        f.debug_struct("UnixDatagram")
+            .field("fd", &self.inner.as_raw_fd())
+            .finish()
     }
 }
 

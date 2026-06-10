@@ -51,11 +51,13 @@ impl HostedEventLoop {
     /// pick-up in [`crate::emscripten::event_loop`].
     pub(crate) fn drive(&self, rt_handle: &crate::runtime::Handle, budget: u32) -> Driven {
         let sched = rt_handle.inner.clone();
-        // `None` means a drive is already on the stack (re-entrant wake); the
-        // active fixed point will observe the readiness, so nothing to do.
+        // `None` means the core is checked out (a drive or `block_on` on the
+        // stack, or — under JSPI — a suspended one): report `Busy` so the
+        // caller leaves the armed timer and keepalive alone. Conflating this
+        // with `Idle` would disarm a wake the core holder still depends on.
         let core = match self.inner.core.take() {
             Some(core) => core,
-            None => return Driven::Idle,
+            None => return Driven::Busy,
         };
         let handle: Arc<Handle> = sched.as_current_thread().clone();
         let cx = scheduler::Context::CurrentThread(Context {
@@ -140,6 +142,9 @@ pub(crate) enum Driven {
     Timer(f64),
     /// Budget spent with work still ready; re-drive immediately (`setTimeout(0)`).
     Yield,
+    /// The core is checked out by another drive on (or, under JSPI, suspended
+    /// on) this thread; do nothing — the holder re-arms on exit.
+    Busy,
 }
 
 /// Bounds task polls per drive. `block_on` (worker, no host loop to yield to)
@@ -274,6 +279,12 @@ unsafe fn pump<F: Future>(
         }
     }
     let _restore = RestoreCore { exec, cx: &cx };
+
+    // An event-loop wake arriving during this `block_on` is latched as pending
+    // (this fixed point only pumps `exec`'s runtime, not the event-loop one);
+    // convert it to a host pick-up on the way out, including on unwind.
+    // Declared before the latch guard so it flushes after the latch clears.
+    let _flush = crate::emscripten::event_loop::pending_flush();
 
     // Mark a drive on the stack so an external wake (via the host `drive`)
     // records readiness instead of starting a nested drive (which would re-enter
