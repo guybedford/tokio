@@ -10,8 +10,8 @@ use tokio::task::JoinError;
 
 #[tokio::test]
 async fn join_error_is_panic_is_false_on_emscripten() {
-    // panic=abort means JoinError can only represent cancellation. Pin the
-    // contract documented in `tokio/src/lib.rs`.
+    // An aborted task reports cancellation, not a panic: there is no panic
+    // payload, so `is_panic` must be false (same contract as native).
     let handle = tokio::spawn(async {
         tokio::time::sleep(Duration::from_secs(60)).await;
     });
@@ -23,9 +23,8 @@ async fn join_error_is_panic_is_false_on_emscripten() {
 
 #[tokio::test]
 async fn join_error_try_into_panic_returns_self() {
-    // `try_into_panic` on emscripten must always return `Err(self)` because
-    // the task didn't produce a panic payload — JoinError is exclusively a
-    // cancellation signal.
+    // `try_into_panic` on a cancellation `JoinError` must return `Err(self)`:
+    // the aborted task never produced a panic payload to recover.
     let handle = tokio::spawn(async {
         tokio::time::sleep(Duration::from_secs(60)).await;
     });

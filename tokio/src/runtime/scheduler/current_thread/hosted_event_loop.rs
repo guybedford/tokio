@@ -108,18 +108,33 @@ impl HostedEventLoop {
             }
         }
 
-        // Budget spent with work still ready: yield to the host and re-drive.
-        if budget.exhausted {
-            return Driven::Yield;
-        }
-
         let inner = cx.expect_current_thread();
         let handle = &inner.handle;
+
+        // Budget spent with work still ready: yield to the host and re-drive.
+        // A budget that ran dry on exactly the last task has nothing left to
+        // yield for, so check the queues rather than the counter alone.
+        if budget.exhausted {
+            let work_remains = inner
+                .core
+                .borrow()
+                .as_ref()
+                .is_some_and(|core| !core.tasks.is_empty())
+                || handle.shared.inject.len() > 0
+                || handle.shared.woken.load(Ordering::Acquire);
+            if work_remains {
+                return Driven::Yield;
+            }
+        }
+
         let clock = &handle.driver.clock;
         match handle.driver.time.as_ref().and_then(|time| {
             let deadline = time.next_expiration_tick()?;
             let now = time.time_source().now(clock);
-            Some(deadline.saturating_sub(now) as f64)
+            let until = time
+                .time_source()
+                .tick_to_duration(deadline.saturating_sub(now));
+            Some(until.as_secs_f64() * 1000.0)
         }) {
             Some(ms) => Driven::Timer(ms),
             None => Driven::Idle,

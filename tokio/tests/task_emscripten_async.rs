@@ -154,12 +154,12 @@ async fn mpsc_round_trip() {
 #[tokio::test]
 async fn dropping_many_long_sleeps_does_not_leak() {
     // Schedule a large number of long-deadline sleeps, poll each one once so
-    // the underlying `emscripten_set_timeout` actually fires, then drop them.
-    // If `Drop` failed to cancel the timer and reclaim the heap-allocated
-    // callback data, this would balloon emscripten's HEAP. We snapshot heap
-    // size before/after and assert growth stays within a small margin —
-    // enough for transient allocator overhead, far less than a 10 000 ×
-    // `Box<CallbackData>` leak would produce.
+    // the timer entry actually registers with the driver's wheel, then drop
+    // them. If `Drop` failed to deregister the entry and release its state,
+    // this would balloon emscripten's HEAP. We snapshot heap size
+    // before/after and assert growth stays within a small margin — enough
+    // for transient allocator overhead, far less than 10 000 leaked timer
+    // registrations would produce.
     use std::future::Future;
     use std::task::Context;
 
@@ -200,9 +200,9 @@ async fn dropping_many_long_sleeps_does_not_leak() {
     let after = unsafe { emscripten_get_heap_size() };
     let growth = after.saturating_sub(before);
 
-    // A real leak (e.g. failing to free `Box<CallbackData>`) would grow by
-    // at least `10_000 * size_of::<CallbackData>()` bytes ≈ 240+ KiB. Allow
-    // 128 KiB for incidental allocator slack across the loop.
+    // A real leak (each `Sleep`'s registered timer state) would grow by at
+    // least 10_000 × that allocation ≈ 240+ KiB. Allow 128 KiB for
+    // incidental allocator slack across the loop.
     assert!(
         growth < 128 * 1024,
         "heap grew by {growth} bytes across 10k Sleep drops — suspect leak",
