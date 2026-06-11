@@ -248,16 +248,12 @@ impl Reactor {
 
         let mut progressed = false;
         if !entries.is_empty() {
-            // SAFETY: `pollfds` is a valid array of `len` entries.
-            // `emscripten_ready_poll` is `poll(fds, nfds, 0)` that never
-            // suspends — `poll` itself is a suspending import under JSPI and
-            // would trap here, on a host-callback frame.
-            let n = unsafe {
-                crate::emscripten::ffi::emscripten_ready_poll(
-                    pollfds.as_mut_ptr(),
-                    pollfds.len() as libc::nfds_t,
-                )
-            };
+            // SAFETY: `pollfds` is a valid array of `len` entries. A zero
+            // timeout is an instantaneous probe: emscripten's poll() routes
+            // it through a plain non-suspending import, so it is callable
+            // here, on a host-callback frame (under JSPI a suspending import
+            // would trap on any stack not entered via a promising export).
+            let n = unsafe { libc::poll(pollfds.as_mut_ptr(), pollfds.len() as libc::nfds_t, 0) };
             if n > 0 {
                 for ((_, io), pfd) in entries.iter().zip(&pollfds) {
                     let ready = revents_to_ready(pfd.revents);

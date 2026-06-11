@@ -72,17 +72,6 @@ extern "C" {
     #[cfg(feature = "rt")]
     pub(crate) fn emscripten_promise_await(promise: EmPromise) -> EmSettledResult;
 
-    /// Synchronous readiness probe with `poll(fds, nfds, 0)` semantics that
-    /// never suspends. Unlike `poll` — a suspending import under JSPI, only
-    /// callable from stacks entered through a promising export — this is
-    /// callable from any context, including the reactor's probes on host
-    /// callback frames.
-    #[cfg(feature = "net")]
-    pub(crate) fn emscripten_ready_poll(
-        fds: *mut libc::pollfd,
-        nfds: libc::nfds_t,
-    ) -> std::ffi::c_int;
-
     /// Global socket *readable* handler (data arrived); `None` deregisters. The
     /// reactor's "now readable" signal.
     #[cfg(feature = "net")]
