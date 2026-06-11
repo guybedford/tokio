@@ -1,5 +1,22 @@
-//! FFI to emscripten's async primitives (non-blocking, no ASYNCIFY) plus the
-//! tokio-specific `__tokio_emscripten_*` library defined in `worker.js`.
+//! FFI to emscripten's async primitives: timers, runtime keepalive, socket
+//! callbacks, and the `emscripten/promise.h` API whose `promise_await`
+//! (suspending under `-sJSPI`) is tokio's park primitive.
+
+/// Opaque `em_promise_t` handle.
+#[cfg(feature = "rt")]
+pub(crate) type EmPromise = *mut std::ffi::c_void;
+
+/// `em_promise_result_t::EM_PROMISE_FULFILL`.
+#[cfg(feature = "rt")]
+pub(crate) const EM_PROMISE_FULFILL: std::ffi::c_int = 0;
+
+/// `em_settled_result_t`: how the awaited promise settled.
+#[cfg(feature = "rt")]
+#[repr(C)]
+pub(crate) struct EmSettledResult {
+    pub(crate) result: std::ffi::c_int,
+    pub(crate) value: *mut std::ffi::c_void,
+}
 
 extern "C" {
     /// Schedule `cb` after `msecs`, returning a timer id for
@@ -31,38 +48,40 @@ extern "C" {
     #[cfg(feature = "rt")]
     pub(crate) fn emscripten_runtime_keepalive_pop();
 
-    /// Force-exit the runtime even if there are outstanding async callbacks.
+    /// Create a promise handle (`emscripten/promise.h`).
     #[cfg(feature = "rt")]
-    pub(crate) fn emscripten_force_exit(status: i32) -> !;
+    pub(crate) fn emscripten_promise_create() -> EmPromise;
 
-    /// Spawn a Node `worker_threads.Worker`, instantiate the same wasm factory
-    /// in it, invoke table index `fn_index`, and block via `Atomics.wait` until
-    /// it completes. Writes the outcome into `outcome_out` and returns its
-    /// status. Implemented in `worker.js`.
+    /// Release a promise handle. Any armed callback referencing it must be
+    /// cancelled first.
     #[cfg(feature = "rt")]
-    pub(crate) fn __tokio_emscripten_block_in_worker(
-        fn_index: i32,
-        outcome_out: *mut u8,
-        outcome_capacity: i32,
-    ) -> i32;
+    pub(crate) fn emscripten_promise_destroy(promise: EmPromise);
 
-    /// Worker-side: on success, write status=0 to the parent's SAB and notify.
+    /// Settle a promise; `result` is an `em_promise_result_t`
+    /// ([`EM_PROMISE_FULFILL`]). Settling an already-settled promise is a no-op
+    /// (JS promise semantics).
     #[cfg(feature = "rt")]
-    pub(crate) fn __tokio_emscripten_worker_notify_done(status: i32);
-
-    /// Worker-side: report failure with a UTF-8 message into the SAB and notify.
-    /// `message_ptr`/`message_len` are read synchronously by the JS side.
-    #[cfg(feature = "rt")]
-    pub(crate) fn __tokio_emscripten_worker_notify_failure(
-        status: i32,
-        message_ptr: *const u8,
-        message_len: i32,
+    pub(crate) fn emscripten_promise_resolve(
+        promise: EmPromise,
+        result: std::ffi::c_int,
+        value: *mut std::ffi::c_void,
     );
 
-    /// Synchronous `debugger;` trampoline: pauses DevTools when attached, else
-    /// a no-op. Only referenced from debug builds of the worker shim.
-    #[cfg(all(feature = "rt", debug_assertions))]
-    pub(crate) fn __tokio_emscripten_debugger();
+    /// Suspend the calling wasm stack until `promise` settles — tokio's park
+    /// primitive. Requires linking with `-sJSPI`.
+    #[cfg(feature = "rt")]
+    pub(crate) fn emscripten_promise_await(promise: EmPromise) -> EmSettledResult;
+
+    /// Synchronous readiness probe with `poll(fds, nfds, 0)` semantics that
+    /// never suspends. Unlike `poll` — a suspending import under JSPI, only
+    /// callable from stacks entered through a promising export — this is
+    /// callable from any context, including the reactor's probes on host
+    /// callback frames.
+    #[cfg(feature = "net")]
+    pub(crate) fn emscripten_ready_poll(
+        fds: *mut libc::pollfd,
+        nfds: libc::nfds_t,
+    ) -> std::ffi::c_int;
 
     /// Global socket *readable* handler (data arrived); `None` deregisters. The
     /// reactor's "now readable" signal.

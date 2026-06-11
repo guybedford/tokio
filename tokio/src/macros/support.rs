@@ -31,13 +31,3 @@ pub use std::future::{Future, IntoFuture};
 pub use std::pin::Pin;
 pub use std::result::Result;
 pub use std::task::{ready, Context, Poll};
-
-// `#[tokio::test]` on emscripten can't block the host event loop, so its
-// expansion runs the test body on a Node worker and blocks the test thread on
-// it (see `crate::emscripten::test_worker`).
-#[cfg(all(target_os = "emscripten", feature = "rt"))]
-#[doc(hidden)]
-pub use crate::emscripten::test_worker::{
-    run_test as emscripten_run_test, run_test_body as emscripten_run_test_body,
-    TestOutput as EmscriptenTestOutput,
-};

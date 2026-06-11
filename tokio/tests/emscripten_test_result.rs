@@ -4,7 +4,7 @@
 use std::io;
 
 // A `Result`-returning test (the `?` pattern) must compile and run on emscripten:
-// `Ok` passes, and the worker harness converts `Err` into a rendered failure.
+// `Ok` passes, and libtest reports `Err` as a failure (native semantics).
 #[tokio::test]
 async fn result_ok_passes() -> Result<(), io::Error> {
     tokio::task::yield_now().await;

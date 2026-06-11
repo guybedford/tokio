@@ -1,14 +1,13 @@
 //! Standard I/O tests for emscripten.
 //!
-//! `tokio::io::{stdout, stderr}` round through emscripten's libc, which
-//! ultimately calls the JS `print`/`printErr` hooks configured by the worker
-//! shim. Since the worker silences stdout/stderr by default to keep libtest
-//! output clean, these tests mostly check that writes don't fail —
+//! `tokio::io::{stdout, stderr}` round through emscripten's libc to the JS
+//! `print`/`printErr` hooks; these tests mostly check that writes don't fail —
 //! observable output verification is left to manual `--nocapture` runs.
 //!
-//! `tokio::io::stdin` is not connected in the worker harness; a read returns
-//! promptly with an error rather than hanging. The contract worth pinning is
-//! "stdin never deadlocks the worker", not a specific errno.
+//! `tokio::io::stdin` reads fd 0 synchronously in emscripten, so the test
+//! runner (`ci/emscripten_entry.mjs`) detaches stdin onto the null device; a
+//! read returns promptly (EOF or an error) rather than blocking the host loop.
+//! The contract worth pinning is "stdin never deadlocks", not a specific errno.
 
 #![cfg(all(target_os = "emscripten", feature = "io-std"))]
 
@@ -51,9 +50,9 @@ async fn stdout_interleaved_writes_complete() {
 
 #[tokio::test]
 async fn stdin_read_does_not_hang() {
-    // stdin is not piped into the worker; a read must return promptly
-    // (Ok(0) EOF or an I/O error) rather than blocking the worker. The
-    // 60s worker watchdog would fail the test if this ever deadlocked.
+    // The runner detaches stdin onto the null device, so a read must return
+    // promptly (Ok(0) EOF or an I/O error) rather than blocking the host
+    // loop. The runner's watchdog fails the test if this ever deadlocks.
     let mut stdin = tokio::io::stdin();
     let mut buf = [0u8; 32];
     let _ = stdin.read(&mut buf).await;

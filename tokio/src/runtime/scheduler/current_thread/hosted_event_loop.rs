@@ -241,10 +241,10 @@ pub(crate) fn block_on<F: Future>(
     match outcome {
         Outcome::Completed(out) => out,
         Outcome::WaitTimeout | Outcome::Suspend => panic!(
-            "Cannot block_on a future that does not resolve synchronously on \
-             single-threaded emscripten; it would require suspending to the host \
-             event loop. Use `#[tokio::main]` / `#[tokio::test]` (driven via the \
-             event-loop runtime) for futures that await timers or I/O."
+            "Cannot block_on a future that does not resolve synchronously on a \
+             runtime built with `emscripten_jspi(false)`: completing it would \
+             require suspending to the host event loop, which needs JSPI. Build \
+             the runtime with JSPI enabled (the default) and link with `-sJSPI`."
         ),
     }
 }
@@ -262,12 +262,20 @@ fn prime_woken(handle: &scheduler::Handle) {
 /// Check out `Core`, set the scheduler context, run the drive loop, then return
 /// `Core`. Must be called inside [`block_on`]'s `enter_runtime`.
 ///
+/// With the runtime's `jspi` config (the default), a fixed point that would
+/// have to suspend parks the whole stack via JSPI instead of returning: the
+/// core is checked back into its slot (so host callbacks reentering the
+/// instance can drive — including a nested `block_on` on the same runtime),
+/// the stack suspends until a wake or the next timer deadline, then re-acquires
+/// the core and re-enters the fixed point. With `jspi` disabled the first
+/// would-suspend outcome is returned and `block_on` panics.
+///
 /// # Safety
 /// `future` must remain valid for the call.
 unsafe fn pump<F: Future>(
     exec: &CurrentThread,
     sched: &scheduler::Handle,
-    future: Pin<&mut F>,
+    mut future: Pin<&mut F>,
 ) -> Outcome<F::Output> {
     let handle: Arc<Handle> = sched.as_current_thread().clone();
     let core = match exec.core.take() {
@@ -306,24 +314,85 @@ unsafe fn pump<F: Future>(
     // `enter_runtime` and panic).
     let _drive = crate::emscripten::event_loop::enter_drive();
 
-    // Bracket the drive with the busy-time/poll metrics the native scheduler
-    // records. `block_on` runs to completion without ceding to a host loop, so
-    // there's no park/unpark here.
-    if let Some(core) = cx.expect_current_thread().core.borrow_mut().as_mut() {
-        core.metrics.start_processing_scheduled_tasks();
-    }
-    let outcome = context::set_scheduler(&cx, || {
-        // On a worker with no host loop to yield to, drive to completion.
-        drive_loop(future, &cx, &mut PollBudget::unbounded())
-    });
-    {
-        let inner = cx.expect_current_thread();
-        if let Some(core) = inner.core.borrow_mut().as_mut() {
-            core.metrics.end_processing_scheduled_tasks();
-            core.submit_metrics(&inner.handle);
+    loop {
+        // Bracket each drive with the busy-time/poll metrics the native
+        // scheduler records around its park loop.
+        if let Some(core) = cx.expect_current_thread().core.borrow_mut().as_mut() {
+            core.metrics.start_processing_scheduled_tasks();
+        }
+        let outcome = context::set_scheduler(&cx, || {
+            drive_loop(future.as_mut(), &cx, &mut PollBudget::unbounded())
+        });
+        {
+            let inner = cx.expect_current_thread();
+            if let Some(core) = inner.core.borrow_mut().as_mut() {
+                core.metrics.end_processing_scheduled_tasks();
+                core.submit_metrics(&inner.handle);
+            }
+        }
+        match outcome {
+            Outcome::Completed(_) => return outcome,
+            Outcome::WaitTimeout | Outcome::Suspend => {
+                if !cx.expect_current_thread().handle.shared.config.jspi {
+                    return outcome;
+                }
+                park_at_cliff(exec, &cx);
+            }
         }
     }
-    outcome
+}
+
+/// Park the drive at its progression cliff via JSPI: check the core into the
+/// scheduler's slot, suspend until a wake or the next timer deadline, then
+/// re-acquire the core. The native `park_internal` analogue.
+fn park_at_cliff(exec: &CurrentThread, cx: &scheduler::Context) {
+    let inner = cx.expect_current_thread();
+    let handle = &inner.handle;
+    let clock = &handle.driver.clock;
+    // Next timer deadline bounds the suspension; no timer = wake-only.
+    let timeout_ms = handle
+        .driver
+        .time
+        .as_ref()
+        .and_then(|time| {
+            let deadline = time.next_expiration_tick()?;
+            let now = time.time_source().now(clock);
+            let until = time
+                .time_source()
+                .tick_to_duration(deadline.saturating_sub(now));
+            Some(until.as_secs_f64() * 1000.0)
+        })
+        .unwrap_or(-1.0);
+
+    {
+        let mut borrow = inner.core.borrow_mut();
+        if let Some(core) = borrow.as_mut() {
+            core.metrics.about_to_park();
+            core.submit_metrics(handle);
+        }
+        // Check the core into the slot: host callbacks reentering the instance
+        // while this stack is suspended can drive with it.
+        if let Some(core) = borrow.take() {
+            exec.core.set(core);
+        }
+    }
+
+    crate::emscripten::event_loop::park_on_host(timeout_ms);
+
+    // Re-acquire. Resumption is a microtask, so no drive is mid-fixed-point;
+    // the slot is populated unless a sibling stack resumed first in this batch
+    // and hasn't re-parked yet — re-park briefly rather than spin.
+    loop {
+        match exec.core.take() {
+            Some(core) => {
+                let mut borrow = cx.expect_current_thread().core.borrow_mut();
+                *borrow = Some(core);
+                borrow.as_mut().expect("core present").metrics.unparked();
+                break;
+            }
+            None => crate::emscripten::event_loop::park_on_host(0.0),
+        }
+    }
 }
 
 /// Drive until the root resolves, no progress is possible, or `budget` is

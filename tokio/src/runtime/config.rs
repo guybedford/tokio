@@ -56,4 +56,11 @@ pub(crate) struct Config {
     /// from polling the I/O driver to polling its own tasks (requires
     /// `tokio_unstable`).
     pub(crate) enable_eager_driver_handoff: bool,
+
+    /// Whether `block_on` may suspend the calling stack on the host event loop
+    /// via JSPI when its future cannot make progress. When `false`, a
+    /// `block_on` that would have to suspend panics instead (the non-JSPI
+    /// semantics, kept selectable for engines without JSPI and for testing).
+    #[cfg(target_os = "emscripten")]
+    pub(crate) jspi: bool,
 }

@@ -183,6 +183,24 @@ cfg_rt! {
         });
     }
 
+    /// Swap the runtime-entered flag out across a JSPI park, so host callbacks
+    /// reentering the instance while this stack is suspended can enter the
+    /// runtime themselves (`enter_runtime` would otherwise panic, and
+    /// `with_scheduler` would surface the suspended stack's scheduler context).
+    /// Restore with [`jspi_restore_runtime_after_park`].
+    #[cfg(target_os = "emscripten")]
+    pub(crate) fn jspi_exit_runtime_for_park() -> EnterRuntime {
+        CONTEXT.with(|c| c.runtime.replace(EnterRuntime::NotEntered))
+    }
+
+    /// Restore the runtime-entered flag saved by [`jspi_exit_runtime_for_park`].
+    /// Runs at resume, when no other drive is on the stack (resumption is a
+    /// microtask), so the flag cannot clobber a live entry.
+    #[cfg(target_os = "emscripten")]
+    pub(crate) fn jspi_restore_runtime_after_park(prev: EnterRuntime) {
+        CONTEXT.with(|c| c.runtime.set(prev));
+    }
+
     pub(super) fn set_scheduler<R>(v: &scheduler::Context, f: impl FnOnce() -> R) -> R {
         CONTEXT.with(|c| c.scheduler.set(v, f))
     }

@@ -1,4 +1,9 @@
-#![cfg(all(target_os = "emscripten", feature = "rt", feature = "macros"))]
+#![cfg(all(
+    target_os = "emscripten",
+    feature = "rt",
+    feature = "macros",
+    feature = "time"
+))]
 
 #[tokio::main(flavor = "current_thread")]
 async fn run() {
@@ -6,10 +11,23 @@ async fn run() {
     assert_eq!(v, 42);
 }
 
+#[tokio::main(flavor = "current_thread")]
+async fn run_with_value() -> u32 {
+    tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    7
+}
+
 #[test]
-fn current_thread_main_unit_via_worker() {
-    // `#[tokio::main(flavor = "current_thread")]` with a `()` body drives the
-    // body to completion in a worker (same path as `#[tokio::test]`); an
-    // in-body assertion failure would marshal back as a panic.
+fn current_thread_main_blocks_to_completion() {
+    // `#[tokio::main(flavor = "current_thread")]` uses the native expansion on
+    // emscripten: `block_on` drives the body to completion (parking the stack
+    // via JSPI when it suspends) before returning.
     run();
+}
+
+#[test]
+fn current_thread_main_returns_value() {
+    // Return values work — main blocks until the body resolves, so there is
+    // no marshalling boundary.
+    assert_eq!(run_with_value(), 7);
 }

@@ -1179,6 +1179,14 @@ jobs:
         with:
           version: 'latest'
 
+      # JSPI (the primary test mode) runs each `#[tokio::test]` as a plain
+      # `block_on` whose stack suspends on the host event loop, so the runner
+      # needs a node with JSPI on by default (V8 13.x+). Installed after emsdk
+      # so it wins PATH for the cargo runner.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+
       - uses: Swatinem/rust-cache@v2
 
       # Emscripten runtime support is experimental and gated behind
@@ -1188,7 +1196,7 @@ jobs:
         working-directory: tokio
         env:
           CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: "node ci/emscripten_entry.mjs"
-          RUSTFLAGS: "--cfg tokio_unstable -C link-args=-sALLOW_MEMORY_GROWTH=1 -C link-args=-sMODULARIZE=1 -C link-args=-sEXPORT_ES6=1 -C link-args=-sEXIT_RUNTIME=1 -C link-arg=--js-library=${{ github.workspace }}/tokio/src/emscripten/test_worker.js"
+          RUSTFLAGS: "--cfg tokio_unstable -C link-args=-sALLOW_MEMORY_GROWTH=1 -C link-args=-sEXIT_RUNTIME=1 -C link-args=-sJSPI"
 
       # The `net` reactor tests drive real sockets over emscripten's `ws`-backed
       # sockfs against an echo server hosted by the runner, so `ws` must be
@@ -1205,7 +1213,7 @@ jobs:
         working-directory: tokio
         env:
           CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: "node ci/emscripten_socket_entry.mjs"
-          RUSTFLAGS: "--cfg tokio_unstable -C link-args=-sALLOW_MEMORY_GROWTH=1 -C link-args=-sMODULARIZE=1 -C link-args=-sEXPORT_ES6=1 -C link-args=-sEXIT_RUNTIME=1 -C link-arg=--js-library=${{ github.workspace }}/tokio/src/emscripten/test_worker.js"
+          RUSTFLAGS: "--cfg tokio_unstable -C link-args=-sALLOW_MEMORY_GROWTH=1 -C link-args=-sEXIT_RUNTIME=1 -C link-args=-sJSPI"
 
   check-external-types:
     name: check-external-types (${{ matrix.os }})

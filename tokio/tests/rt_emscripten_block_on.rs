@@ -1,7 +1,9 @@
 //! `Runtime::block_on` on emscripten drives the scheduler synchronously to
 //! a fixed point: it returns the output for futures that resolve without
-//! suspending, and panics for futures that would have to await a timer or
-//! external wake (a worker cannot block its host event loop).
+//! suspending. A future that would have to await a timer or external wake
+//! parks the stack via JSPI (see `rt_emscripten_jspi`); on a runtime built
+//! with `emscripten_jspi(false)` it panics instead, since without JSPI the
+//! host event loop cannot run while wasm is on the stack.
 
 #![cfg(all(
     target_os = "emscripten",
@@ -47,22 +49,34 @@ fn block_on_drives_yield_now() {
     assert_eq!(out, 7);
 }
 
+/// A runtime with JSPI parking disabled: `block_on` must resolve synchronously
+/// or panic, the only sound semantics on an engine without JSPI. Testable in a
+/// JSPI build because the flag is per-runtime.
+fn rt_no_jspi() -> tokio::runtime::Runtime {
+    Builder::new_current_thread()
+        .enable_all()
+        .emscripten_jspi(false)
+        .build()
+        .unwrap()
+}
+
 #[test]
 #[should_panic(expected = "Cannot block_on")]
-fn block_on_panics_on_timer_wait() {
+fn no_jspi_block_on_panics_on_timer_wait() {
     // A real timer deadline can only be satisfied by returning to the host
-    // event loop, which `block_on` cannot do.
-    rt().block_on(async {
+    // event loop, which a non-JSPI `block_on` cannot do.
+    rt_no_jspi().block_on(async {
         tokio::time::sleep(Duration::from_millis(10)).await;
     });
 }
 
 #[test]
 #[should_panic(expected = "Cannot block_on")]
-fn block_on_panics_on_external_wait() {
+fn no_jspi_block_on_panics_on_external_wait() {
     // A oneshot whose sender never fires (no in-runtime work can complete
     // it) leaves the future pending with no timer — the "suspend" case.
-    rt().block_on(async {
+    // Without JSPI this must panic rather than hang.
+    rt_no_jspi().block_on(async {
         let (_tx, rx) = tokio::sync::oneshot::channel::<()>();
         let _ = rx.await;
     });

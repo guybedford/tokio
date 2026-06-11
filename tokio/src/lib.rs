@@ -448,13 +448,16 @@
 //! The `wasm32-unknown-emscripten` target runs Tokio's canonical
 //! single-threaded (`current_thread`) scheduler, time driver, and task system
 //! unchanged. The only platform-specific piece is a small kernel that drives
-//! the scheduler from the JavaScript event loop — re-entered by host
-//! `setTimeout` wakes and socket-event callbacks — instead of the native
-//! blocking `park` loop, so the runtime never blocks the host. No ASYNCIFY/JSPI
-//! is required.
+//! the scheduler from the JavaScript event loop instead of the native blocking
+//! `park` loop: when a `block_on` cannot make progress it suspends its calling
+//! stack on the host loop via [JSPI] (re-resumed by host `setTimeout` wakes and
+//! socket-event callbacks), so the host loop keeps running while Rust "blocks".
+//! No ASYNCIFY transform is required.
 //!
 //! This support is experimental while its execution model settles, so it
 //! requires `--cfg tokio_unstable` (set it in `RUSTFLAGS`).
+//!
+//! [JSPI]: https://github.com/WebAssembly/js-promise-integration
 //!
 //! Supported features: `rt`, `time`, `sync`, `macros`, `fs`, `io-util`,
 //! `io-std`, `test-util`, and `net`. Enabling `net` activates a readiness
@@ -470,11 +473,16 @@
 //! compile time: `process`/`signal` have no underlying primitives (`fork`/`exec`,
 //! kernel signal delivery) and `rt-multi-thread` has no native threads.
 //!
-//! `Runtime::block_on` drives the scheduler synchronously to a fixed point
-//! and returns the output. Because a worker cannot block its host event loop,
-//! it **panics** if the future would have to suspend (await a timer or an
-//! external wake). Use `#[tokio::main]` / `#[tokio::test]` (which drive via
-//! the event loop) for futures that suspend.
+//! `Runtime::block_on` drives the scheduler to a fixed point; when the future
+//! would have to suspend (await a timer or an external wake), the calling wasm
+//! stack parks on the host event loop via JSPI and resumes on the wake — so
+//! `block_on`, `Handle::block_on`, and the `blocking_*` sync APIs all behave
+//! as on native. While a stack is parked, the host loop (and tokio work driven
+//! from it — timers, socket callbacks, even another `block_on` on the same
+//! runtime from a reentrant export) keeps running. A runtime built with
+//! `Builder::emscripten_jspi(false)` opts out: its `block_on` panics if the
+//! future would have to suspend, the only sound semantics on an engine
+//! without JSPI.
 //!
 //! `spawn_blocking` has no threadpool to dispatch to, so the closure runs as a
 //! canonical spawned task on the single thread and returns the usual
@@ -489,38 +497,41 @@
 //!
 //! #### `#[tokio::test]` / `#[tokio::main]` on emscripten
 //!
-//! Because the host event loop cannot be blocked, each `#[tokio::test]` and
-//! `#[tokio::main]` body runs in its own Node `worker_threads.Worker`. The
-//! parent thread blocks on `Atomics.wait` while the worker drives the future
-//! to completion, so libtest sees a normal synchronous test fn that returns
-//! pass/fail. Worker panics are captured and re-raised on the parent so
-//! libtest reports a faithful failure with the original file/line/message.
+//! Both use the **native macro expansion**: the body runs via `block_on`,
+//! which parks on the host loop while pending. Tests are ordinary synchronous
+//! libtest fns (panics, `#[should_panic(expected = "...")]`, and
+//! `Result`-returning tests all behave natively), and `#[tokio::main]` blocks
+//! until the body resolves, so return values work. The one divergence:
+//! `#[tokio::main]` defaults to the `multi_thread` flavor, which has no native
+//! threads here — use `#[tokio::main(flavor = "current_thread")]` (as on any
+//! build without `rt-multi-thread`).
 //!
-//! Caveats:
-//!  * `#[tokio::main]` defaults to the `multi_thread` flavor, which is
-//!    unavailable here; use `#[tokio::main(flavor = "current_thread")]` (as on
-//!    any build without `rt-multi-thread`). A non-`()` return value cannot be
-//!    marshalled back across the worker boundary.
-//!  * `#[should_panic(expected = "...")]` does not match strings against
-//!    worker-side panics (the parent payload is a marker type). The bare
-//!    `#[should_panic]` attribute works.
+//! For embedders that must not block the host (e.g. exporting an `async fn` to
+//! JS as a `Promise`), `tokio::emscripten::event_loop` provides `schedule`
+//! (enqueue a root, callback on completion) and `drive` (cooperatively pump
+//! to a fixed point) over a persistent, host-driven runtime.
 //!
-//! #### Linking and running emscripten tests
+//! #### Linking and running on emscripten
 //!
-//! The test harness ships as `tokio/src/emscripten/test_worker.js` and a
-//! cargo runner at `tokio/ci/emscripten_entry.mjs`. Required environment:
+//! Tokio's `block_on` parking suspends via emscripten's `promise_await`,
+//! which needs JSPI: link with `-sJSPI`. No js-library or other custom file
+//! is required, and plain `node` runs the test binaries directly:
 //!
 //! ```text
-//! CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER="node tokio/ci/emscripten_entry.mjs"
+//! CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER="node"
 //! RUSTFLAGS="--cfg tokio_unstable \
 //!            -C link-args=-sALLOW_MEMORY_GROWTH=1 \
-//!            -C link-args=-sMODULARIZE=1 \
-//!            -C link-args=-sEXPORT_ES6=1 \
 //!            -C link-args=-sEXIT_RUNTIME=1 \
-//!            -C link-arg=--js-library=/path/to/tokio/src/emscripten/test_worker.js"
+//!            -C link-args=-sJSPI"
 //! ```
 //!
-//! See tokio's CI workflow for the canonical invocation.
+//! (Tokio's own CI uses a thin wrapper runner, `tokio/ci/emscripten_entry.mjs`,
+//! which adds a hang watchdog, a deadlock guard, and detaches stdin —
+//! emscripten's stdin read is synchronous and would block the host loop if a
+//! test reads stdin with a terminal attached.)
+//!
+//! JSPI ships enabled in V8 13.x+ (Node 24+, Chrome 137+). See tokio's CI
+//! workflow for the canonical invocation.
 //!
 //! ## Unstable `WASM` support
 //!
@@ -564,10 +575,10 @@ compile_error!("Only features sync,macros,io-util,rt,time are supported on wasm.
 // `cfg_signal!`). The multi-threaded runtime compiles but only runs under a
 // `PROXY_TO_PTHREAD` build; `#[tokio::main]` steers to `current_thread`.
 
-// The emscripten runtime (the event-loop runtime + `AsyncFd` reactor, and the
-// `event_loop::{schedule, handle}` API the `#[tokio::main]` / `#[tokio::test]`
-// macros build on) is experimental while its execution model settles (e.g.
-// JSPI), so it is gated behind `--cfg tokio_unstable` for now.
+// The emscripten runtime (the JSPI-parking `block_on` kernel, the `AsyncFd`
+// reactor, and the embedder-facing `event_loop::{schedule, drive}` API) is
+// experimental while its execution model settles, so it is gated behind
+// `--cfg tokio_unstable` for now.
 #[cfg(all(target_os = "emscripten", feature = "rt", not(tokio_unstable)))]
 compile_error!(
     "Tokio's `wasm32-unknown-emscripten` runtime support is experimental and \

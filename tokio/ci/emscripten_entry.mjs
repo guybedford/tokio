@@ -1,27 +1,43 @@
-// Cargo test runner for wasm32-unknown-emscripten. The binary is built
-// `-sMODULARIZE -sEXPORT_ES6`, so the `.js` exports a factory; this loads it,
-// runs it with the libtest args, and propagates the exit code. Also sets
-// `TOKIO_EMSCRIPTEN_MODULE_PATH` so worker shims can re-import the same factory.
+// Cargo test runner for wasm32-unknown-emscripten. The binary is a plain
+// emscripten script, so `node <binary>` alone works; this wrapper only adds
+// CI hardening:
+//  * stdin detached onto the null device — emscripten's stdin read is a
+//    synchronous fd-0 read that would otherwise block node's loop (no JSPI
+//    park, no watchdog) whenever a test touches stdin with a terminal or
+//    pipe attached;
+//  * a deadlock guard (see emscripten_deadlock_guard.cjs);
+//  * a watchdog so a binary hanging with a live event loop fails in bounded
+//    time instead of stalling the suite.
 //
 // Driven by cargo via CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER.
 
-import { pathToFileURL } from "node:url";
-import { resolve } from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
-const [, , binaryPath, ...libtestArgs] = process.argv;
+const [, , binaryPath, ...args] = process.argv;
 if (!binaryPath) {
     console.error("emscripten_entry.mjs: missing test binary path");
     process.exit(2);
 }
 
-const resolvedBinary = resolve(binaryPath);
-process.env.TOKIO_EMSCRIPTEN_MODULE_PATH = resolvedBinary;
+const guard = join(dirname(fileURLToPath(import.meta.url)), "emscripten_deadlock_guard.cjs");
 
-const factory = (await import(pathToFileURL(resolvedBinary).href)).default;
+const child = spawn(process.execPath, ["--require", guard, binaryPath, ...args], {
+    stdio: ["ignore", "inherit", "inherit"],
+});
 
-await factory({
-    arguments: libtestArgs,
-    onExit(code) {
-        process.exit(code);
-    },
+const watchdogMs = Number(process.env.TOKIO_EMSCRIPTEN_TEST_TIMEOUT_MS || 120_000);
+const watchdog = setTimeout(() => {
+    console.error(`emscripten_entry.mjs: watchdog: ${binaryPath} still running after ${watchdogMs}ms`);
+    child.kill();
+    process.exitCode = 8;
+}, watchdogMs);
+watchdog.unref();
+
+child.on("exit", (code, signal) => {
+    clearTimeout(watchdog);
+    if (process.exitCode === undefined) {
+        process.exitCode = code ?? (signal ? 8 : 0);
+    }
 });

@@ -83,27 +83,17 @@ impl ParkThread {
 
 impl Inner {
     // Reachable from user code: `Handle::block_on`, `blocking_recv`,
-    // `blocking_lock`, etc. all park here when their future suspends. The host
-    // event loop cannot be blocked, so fail with the same actionable message as
-    // the hosted `block_on`.
+    // `blocking_lock`, etc. all park here when their future suspends. The
+    // stack suspends on the host loop via JSPI; the waker side routes through
+    // `unpark` below, which resumes it.
     #[cfg(target_os = "emscripten")]
     fn park(&self) {
-        panic!(
-            "Cannot block the current thread on single-threaded emscripten: this \
-             blocking API would have to suspend the host event loop. Use the \
-             async equivalent (`.await` instead of `Handle::block_on` / \
-             `blocking_*` methods) driven via the event-loop runtime."
-        );
+        crate::emscripten::event_loop::park_on_host(-1.0);
     }
 
     #[cfg(target_os = "emscripten")]
-    fn park_timeout(&self, _dur: Duration) {
-        panic!(
-            "Cannot block the current thread on single-threaded emscripten: this \
-             blocking API would have to suspend the host event loop. Use the \
-             async equivalent (`.await` instead of `Handle::block_on` / \
-             `blocking_*` methods) driven via the event-loop runtime."
-        );
+    fn park_timeout(&self, dur: Duration) {
+        crate::emscripten::event_loop::park_on_host(dur.as_secs_f64() * 1000.0);
     }
 
     #[cfg(not(target_os = "emscripten"))]
