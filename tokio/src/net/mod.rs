@@ -64,7 +64,7 @@ mod emscripten;
 #[cfg(all(feature = "net", target_os = "emscripten"))]
 mod reactor_stream;
 #[cfg(all(feature = "net", target_os = "emscripten"))]
-pub use emscripten::TcpStream;
+pub use emscripten::{TcpListener, TcpSocket, TcpStream};
 
 cfg_net_unix_not_emscripten! {
     pub mod unix;
