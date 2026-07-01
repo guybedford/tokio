@@ -72,55 +72,51 @@ extern "C" {
     #[cfg(feature = "rt")]
     pub(crate) fn emscripten_promise_await(promise: EmPromise) -> EmSettledResult;
 
-    /// Global socket *readable* handler (data arrived); `None` deregisters. The
-    /// reactor's "now readable" signal.
+    /// `epoll_create1(2)`: create an epoll fd. Not bound by `libc` for the
+    /// emscripten target, so declared here (emscripten's libc exports it).
     #[cfg(feature = "net")]
-    #[allow(dead_code)]
-    pub(crate) fn emscripten_set_socket_message_callback(
-        user_data: *mut std::ffi::c_void,
-        callback: Option<unsafe extern "C-unwind" fn(fd: i32, user_data: *mut std::ffi::c_void)>,
-    );
+    pub(crate) fn epoll_create1(flags: std::ffi::c_int) -> std::ffi::c_int;
 
-    /// Global handler for outgoing-connection completion (writable/connected).
+    /// `epoll_ctl(2)`: add/modify/remove `fd` on the epoll set.
     #[cfg(feature = "net")]
-    #[allow(dead_code)]
-    pub(crate) fn emscripten_set_socket_open_callback(
-        user_data: *mut std::ffi::c_void,
-        callback: Option<unsafe extern "C-unwind" fn(fd: i32, user_data: *mut std::ffi::c_void)>,
-    );
+    pub(crate) fn epoll_ctl(
+        epfd: std::ffi::c_int,
+        op: std::ffi::c_int,
+        fd: std::ffi::c_int,
+        event: *mut libc::epoll_event,
+    ) -> std::ffi::c_int;
 
-    /// Global handler for a listener with an incoming connection (listener
-    /// read-readiness).
+    /// `epoll_wait(2)`: drain ready events. The reactor only ever calls it with
+    /// `timeout == 0` (a non-blocking probe — emscripten routes a zero timeout
+    /// through a plain non-suspending syscall, callable on a host-callback
+    /// frame; a blocking wait would need JSPI/ASYNCIFY).
     #[cfg(feature = "net")]
-    #[allow(dead_code)]
-    pub(crate) fn emscripten_set_socket_connection_callback(
-        user_data: *mut std::ffi::c_void,
-        callback: Option<unsafe extern "C-unwind" fn(fd: i32, user_data: *mut std::ffi::c_void)>,
-    );
+    pub(crate) fn epoll_wait(
+        epfd: std::ffi::c_int,
+        events: *mut libc::epoll_event,
+        maxevents: std::ffi::c_int,
+        timeout: std::ffi::c_int,
+    ) -> std::ffi::c_int;
 
-    /// Global handler for peer close (EOF / read+write closed).
+    /// Register a persistent, non-blocking readiness callback on an epoll fd
+    /// (`emscripten/emscripten.h`): instead of blocking in `epoll_wait`, the
+    /// runtime delivers up to `maxevents` ready events to `callback` on a fresh
+    /// host tick whenever the set makes progress. Armed once and reused; a `None`
+    /// callback unregisters. Needs no JSPI/ASYNCIFY. The reactor's wake source.
     #[cfg(feature = "net")]
-    #[allow(dead_code)]
-    pub(crate) fn emscripten_set_socket_close_callback(
-        user_data: *mut std::ffi::c_void,
-        callback: Option<unsafe extern "C-unwind" fn(fd: i32, user_data: *mut std::ffi::c_void)>,
-    );
-
-    /// Global handler for socket errors: fd, errno, and a UTF-8 message valid
-    /// only for the call.
-    #[cfg(feature = "net")]
-    #[allow(dead_code)]
-    pub(crate) fn emscripten_set_socket_error_callback(
-        user_data: *mut std::ffi::c_void,
+    pub(crate) fn emscripten_epoll_set_callback(
+        epfd: std::ffi::c_int,
+        maxevents: std::ffi::c_int,
         callback: Option<
             unsafe extern "C-unwind" fn(
-                fd: i32,
-                err: i32,
-                msg: *const std::ffi::c_char,
-                user_data: *mut std::ffi::c_void,
+                epfd: std::ffi::c_int,
+                events: *mut libc::epoll_event,
+                nready: std::ffi::c_int,
+                userdata: *mut std::ffi::c_void,
             ),
         >,
-    );
+        userdata: *mut std::ffi::c_void,
+    ) -> std::ffi::c_int;
 
     /// Current wasm heap size in bytes; used by tests to detect leaks.
     #[allow(dead_code)]

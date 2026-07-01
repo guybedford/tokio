@@ -61,6 +61,11 @@ cfg_net_not_emscripten! {
 // Shared plumbing for the emscripten socket types (TCP + Unix).
 #[cfg(all(feature = "net", target_os = "emscripten"))]
 mod emscripten;
+// Async name resolution over emscripten's `emscripten_dns_lookup_async`, used by
+// the `ToSocketAddrs` string impls in `addr` (the sync `getaddrinfo` path is
+// `EAI_AGAIN` for hostnames under `-sNODERAWSOCKETS`).
+#[cfg(all(feature = "net", target_os = "emscripten"))]
+pub(crate) mod emscripten_dns;
 #[cfg(all(feature = "net", target_os = "emscripten"))]
 mod reactor_stream;
 #[cfg(all(feature = "net", target_os = "emscripten"))]

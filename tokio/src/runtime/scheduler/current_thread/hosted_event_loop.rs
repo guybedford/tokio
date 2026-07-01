@@ -444,9 +444,10 @@ fn drive_loop<F: Future>(
 
         if !progressed {
             // The progression cliff: no task or timer advanced. Before idling,
-            // consult the I/O reactor's non-blocking `poll(2)` (the `epoll`-park
-            // analogue) — it surfaces readiness no callback could carry (listener
-            // accept, a `block_on`-parked fd). Loop again if it freed any waiter.
+            // consult the I/O reactor's non-blocking `epoll_wait(.., 0)` (the
+            // `epoll`-park analogue) — it surfaces pending readiness before the
+            // callback's host tick fires (e.g. a `block_on`-parked fd). Loop
+            // again if it freed any waiter.
             #[cfg(feature = "net")]
             if let Some(io) = handle.driver.io.as_ref() {
                 if io.poll_ready() {
