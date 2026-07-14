@@ -3,6 +3,7 @@
 use crate::loom::sync::atomic::AtomicUsize;
 use crate::loom::sync::{Arc, Condvar, Mutex};
 
+#[cfg_attr(all(target_os = "emscripten", feature = "rt"), allow(unused_imports))] // park is unreachable on emscripten
 use std::sync::atomic::Ordering::SeqCst;
 use std::time::Duration;
 
@@ -19,13 +20,18 @@ pub(crate) struct UnparkThread {
 
 #[derive(Debug)]
 struct Inner {
+    #[cfg_attr(all(target_os = "emscripten", feature = "rt"), allow(dead_code))]
     state: AtomicUsize,
+    #[cfg_attr(all(target_os = "emscripten", feature = "rt"), allow(dead_code))]
     mutex: Mutex<()>,
     condvar: Condvar,
 }
 
+#[cfg_attr(all(target_os = "emscripten", feature = "rt"), allow(dead_code))]
 const EMPTY: usize = 0;
+#[cfg_attr(all(target_os = "emscripten", feature = "rt"), allow(dead_code))]
 const PARKED: usize = 1;
+#[cfg_attr(all(target_os = "emscripten", feature = "rt"), allow(dead_code))]
 const NOTIFIED: usize = 2;
 
 tokio_thread_local! {
@@ -76,6 +82,21 @@ impl ParkThread {
 // ==== impl Inner ====
 
 impl Inner {
+    // Reachable from user code: `Handle::block_on`, `blocking_recv`,
+    // `blocking_lock`, etc. all park here when their future suspends. The
+    // stack suspends on the host loop via JSPI; the waker side routes through
+    // `unpark` below, which resumes it.
+    #[cfg(all(target_os = "emscripten", feature = "rt"))]
+    fn park(&self) {
+        crate::runtime::hosted::park_on_host(-1.0);
+    }
+
+    #[cfg(all(target_os = "emscripten", feature = "rt"))]
+    fn park_timeout(&self, dur: Duration) {
+        crate::runtime::hosted::park_on_host(dur.as_secs_f64() * 1000.0);
+    }
+
+    #[cfg(not(all(target_os = "emscripten", feature = "rt")))]
     fn park(&self) {
         // If we were previously notified then we consume this notification and
         // return quickly.
@@ -124,6 +145,7 @@ impl Inner {
     }
 
     /// Parks the current thread for at most `dur`.
+    #[cfg(not(all(target_os = "emscripten", feature = "rt")))]
     fn park_timeout(&self, dur: Duration) {
         // Like `park` above we have a fast path for an already-notified thread,
         // and afterwards we start coordinating for a sleep. Return quickly.
@@ -174,6 +196,16 @@ impl Inner {
         }
     }
 
+    #[cfg(all(target_os = "emscripten", feature = "rt"))]
+    fn unpark(&self) {
+        // The analogue of the native condvar notify: resume the JSPI-parked
+        // stacks; each re-checks its own condition and re-parks if this wake
+        // wasn't its. Never drives inline, so `Waker::wake` stays O(1) and
+        // can't reenter user code.
+        crate::runtime::hosted::unpark_all();
+    }
+
+    #[cfg(not(all(target_os = "emscripten", feature = "rt")))]
     fn unpark(&self) {
         // To ensure the unparked thread will observe any writes we made before
         // this call, we must perform a release operation that `park` can
@@ -220,6 +252,7 @@ impl UnparkThread {
     pub(crate) fn unpark(&self) {
         self.inner.unpark();
     }
+
 }
 
 use crate::loom::thread::AccessError;

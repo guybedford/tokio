@@ -25,6 +25,9 @@ impl Defer {
         deferred.push(waker.clone());
     }
 
+    // Used by the native park loops (`has_pending_work`, multi_thread), both of
+    // which emscripten's cooperative drive replaces.
+    #[cfg_attr(target_os = "emscripten", allow(dead_code))]
     pub(crate) fn is_empty(&self) -> bool {
         self.deferred.borrow().is_empty()
     }

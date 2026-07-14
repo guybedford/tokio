@@ -1,5 +1,7 @@
 #![warn(rust_2018_idioms)]
 #![cfg(all(feature = "full", not(target_os = "wasi"), not(miri)))]
+// Not widened to emscripten: this is a blocking-pool (multi-thread) race
+// regression using `blocking_recv`; emscripten runs `spawn_blocking` inline.
 
 use std::time::Duration;
 

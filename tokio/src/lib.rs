@@ -446,11 +446,16 @@
 //!
 //! ### Emscripten support
 //!
-//! The `wasm32-unknown-emscripten` target is supported at parity with the
-//! other wasm targets. A host-event-loop execution model (a JSPI-parking
-//! `block_on`, plus `fs`/`io-std` over emscripten's synchronous filesystem)
-//! is a planned follow-up; until it lands, a `block_on` whose future cannot
-//! resolve synchronously behaves as on other single-threaded wasm targets.
+//! The `wasm32-unknown-emscripten` target runs Tokio's canonical
+//! single-threaded (`current_thread`) scheduler, time driver, and task system
+//! unchanged. The only platform-specific piece is a small kernel that drives
+//! the scheduler from the JavaScript event loop instead of the native blocking
+//! `park` loop: when a `block_on` cannot make progress it suspends its calling
+//! stack on the host loop via [JSPI] (re-resumed by host `setTimeout` wakes and
+//! socket-event callbacks), so the host loop keeps running while Rust "blocks".
+//! No ASYNCIFY transform is required.
+//!
+//! [JSPI]: https://github.com/WebAssembly/js-promise-integration
 //!
 //! Supported features: `rt`, `time`, `sync`, `macros`, `fs`, `io-util`,
 //! `io-std`, and `test-util`. `fs` and the stdio types run their `std::*`
@@ -463,6 +468,17 @@
 //! compile time: `process`/`signal` have no underlying primitives (`fork`/`exec`,
 //! kernel signal delivery) and `rt-multi-thread` has no native threads.
 //!
+//! `Runtime::block_on` drives the scheduler to a fixed point; when the future
+//! would have to suspend (await a timer or an external wake), the calling wasm
+//! stack parks on the host event loop via JSPI and resumes on the wake — so
+//! `block_on`, `Handle::block_on`, and the `blocking_*` sync APIs all behave
+//! as on native. While a stack is parked, the host loop (and tokio work driven
+//! from it — timers, socket callbacks, even another `block_on` on the same
+//! runtime from a reentrant export) keeps running. A runtime built with
+//! `Builder::emscripten_jspi(false)` opts out: its `block_on` panics if the
+//! future would have to suspend, the only sound semantics on an engine
+//! without JSPI.
+//!
 //! `spawn_blocking` has no threadpool to dispatch to, so the closure runs as a
 //! canonical spawned task on the single thread and returns the usual
 //! `JoinHandle`. `tokio::fs::*` and `tokio::io::{stdin, stdout, stderr}`
@@ -474,9 +490,16 @@
 //! `Err(JoinError)`, and `JoinError::is_panic` / `JoinError::into_panic`
 //! report the payload.
 //!
-//! `#[tokio::test]` / `#[tokio::main]` use the native macro expansion; the
-//! `multi_thread` flavor is rejected (no native threads) — use
-//! `flavor = "current_thread"`.
+//! #### `#[tokio::test]` / `#[tokio::main]` on emscripten
+//!
+//! Both use the **native macro expansion**: the body runs via `block_on`,
+//! which parks on the host loop while pending. Tests are ordinary synchronous
+//! libtest fns (panics, `#[should_panic(expected = "...")]`, and
+//! `Result`-returning tests all behave natively), and `#[tokio::main]` blocks
+//! until the body resolves, so return values work. The one divergence:
+//! `#[tokio::main]` defaults to the `multi_thread` flavor, which has no native
+//! threads here — use `#[tokio::main(flavor = "current_thread")]` (as on any
+//! build without `rt-multi-thread`).
 //!
 //!
 //! #### Linking and running on emscripten
@@ -542,6 +565,21 @@ compile_error!("Only features sync,macros,io-util,rt,time are supported on wasm.
 // delivery, so their modules are compiled out (see `cfg_process!` /
 // `cfg_signal!`). The multi-threaded runtime compiles but only runs under a
 // `PROXY_TO_PTHREAD` build; `#[tokio::main]` steers to `current_thread`.
+
+// The emscripten runtime kernel is single-threaded by construction: its host
+// glue (`HostedState`, the reactor `PollState`, the drive latch) uses
+// unsynchronized cells under `unsafe impl Send/Sync` whose soundness argument
+// is that no second thread of execution exists. A `-pthread` (atomics) build
+// breaks that premise — real threads could move a `Waker` across threads and
+// race those cells — so reject it until the kernel is made thread-aware.
+// The `net` feature is rejected for emscripten by mio itself ("This wasm
+// target is unsupported by mio"); an epoll-backed reactor is a planned
+// follow-up.
+#[cfg(all(target_os = "emscripten", feature = "rt", target_feature = "atomics"))]
+compile_error!(
+    "Tokio's `wasm32-unknown-emscripten` runtime is single-threaded and does \
+not support `-pthread` (atomics) builds."
+);
 
 #[cfg(all(not(tokio_unstable), feature = "io-uring"))]
 compile_error!("The `io-uring` feature requires `--cfg tokio_unstable`.");
@@ -613,6 +651,11 @@ cfg_rt! {
 cfg_not_rt! {
     pub(crate) mod runtime;
 }
+
+// Emscripten platform support: the FFI bindings behind the hosted
+// event-loop glue (`crate::runtime::hosted`) and the JSPI park primitive.
+#[cfg(target_os = "emscripten")]
+pub(crate) mod emscripten;
 
 cfg_signal! {
     pub mod signal;

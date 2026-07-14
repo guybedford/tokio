@@ -64,6 +64,11 @@ struct Context {
     /// the scheduler
     budget: Cell<coop::Budget>,
 
+    /// Emscripten host-loop state: the JSPI-parked stacks. See
+    /// `crate::runtime::hosted`.
+    #[cfg(all(target_os = "emscripten", feature = "rt"))]
+    hosted: crate::runtime::hosted::HostContext,
+
     #[cfg(all(
         tokio_unstable,
         feature = "taskdump",
@@ -109,6 +114,9 @@ tokio_thread_local! {
             rng: Cell::new(None),
 
             budget: Cell::new(coop::Budget::unconstrained()),
+
+            #[cfg(all(target_os = "emscripten", feature = "rt"))]
+            hosted: crate::runtime::hosted::HostContext::new(),
 
             #[cfg(all(
                 tokio_unstable,
@@ -181,6 +189,31 @@ cfg_rt! {
                 waker.wake_by_ref();
             }
         });
+    }
+
+    /// This thread's emscripten host-loop state (drive latch, latched
+    /// pick-ups, parked stacks).
+    #[cfg(target_os = "emscripten")]
+    pub(crate) fn with_hosted<R>(f: impl FnOnce(&crate::runtime::hosted::HostContext) -> R) -> R {
+        CONTEXT.with(|c| f(&c.hosted))
+    }
+
+    /// Swap the runtime-entered flag out across a JSPI park, so host callbacks
+    /// reentering the instance while this stack is suspended can enter the
+    /// runtime themselves (`enter_runtime` would otherwise panic, and
+    /// `with_scheduler` would surface the suspended stack's scheduler context).
+    /// Restore with [`jspi_restore_runtime_after_park`].
+    #[cfg(target_os = "emscripten")]
+    pub(crate) fn jspi_exit_runtime_for_park() -> EnterRuntime {
+        CONTEXT.with(|c| c.runtime.replace(EnterRuntime::NotEntered))
+    }
+
+    /// Restore the runtime-entered flag saved by [`jspi_exit_runtime_for_park`].
+    /// Runs at resume, when no other drive is on the stack (resumption is a
+    /// microtask), so the flag cannot clobber a live entry.
+    #[cfg(target_os = "emscripten")]
+    pub(crate) fn jspi_restore_runtime_after_park(prev: EnterRuntime) {
+        CONTEXT.with(|c| c.runtime.set(prev));
     }
 
     pub(super) fn set_scheduler<R>(v: &scheduler::Context, f: impl FnOnce() -> R) -> R {

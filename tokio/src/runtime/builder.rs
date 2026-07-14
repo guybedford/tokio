@@ -152,6 +152,10 @@ pub struct Builder {
     /// Whether or not to enable eager hand-off for the I/O and time drivers (in
     /// `tokio_unstable`).
     enable_eager_driver_handoff: bool,
+
+    /// Whether `block_on` may suspend the calling stack via JSPI (emscripten).
+    #[cfg(target_os = "emscripten")]
+    pub(super) emscripten_jspi: bool,
 }
 
 cfg_unstable! {
@@ -351,6 +355,11 @@ impl Builder {
 
             // Eager driver handoff is disabled by default.
             enable_eager_driver_handoff: false,
+
+            // JSPI parking is the default `block_on` mode on emscripten
+            // (requires linking with `-sJSPI`); see `emscripten_jspi`.
+            #[cfg(target_os = "emscripten")]
+            emscripten_jspi: true,
         }
     }
 
@@ -1671,6 +1680,23 @@ impl Builder {
         ))
     }
 
+    /// Whether `block_on` may suspend the calling stack on the host JS event
+    /// loop via [JSPI] when its future cannot make progress synchronously.
+    ///
+    /// Defaults to `true`, which requires linking with `-sJSPI` (see the
+    /// [emscripten docs](crate#emscripten-support)). With `false`, a `block_on`
+    /// that would have to suspend (await a timer or an external wake) panics
+    /// instead of suspending — the only possible semantics on an engine
+    /// without JSPI, where the host loop cannot run while wasm is on the
+    /// stack.
+    ///
+    /// [JSPI]: https://github.com/WebAssembly/js-promise-integration
+    #[cfg(target_os = "emscripten")]
+    pub fn emscripten_jspi(&mut self, enabled: bool) -> &mut Self {
+        self.emscripten_jspi = enabled;
+        self
+    }
+
     fn build_current_thread_runtime_components(
         &mut self,
         local_tid: Option<ThreadId>,
@@ -1721,6 +1747,8 @@ impl Builder {
                 metrics_poll_count_histogram: self.metrics_poll_count_histogram_builder(),
                 metrics_schedule_latency_histogram: self
                     .metrics_schedule_latency_histogram_builder(),
+                #[cfg(target_os = "emscripten")]
+                jspi: self.emscripten_jspi,
             },
             local_tid,
             self.name.clone(),
@@ -2042,6 +2070,8 @@ cfg_rt_multi_thread! {
                     seed_generator: seed_generator_1,
                     metrics_poll_count_histogram: self.metrics_poll_count_histogram_builder(),
                     metrics_schedule_latency_histogram: self.metrics_schedule_latency_histogram_builder(),
+                    #[cfg(target_os = "emscripten")]
+                    jspi: self.emscripten_jspi,
                 },
                 self.timer_flavor,
                 self.name.clone(),

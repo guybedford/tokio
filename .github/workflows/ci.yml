@@ -1180,6 +1180,10 @@ jobs:
         with:
           version: 'latest'
 
+      # JSPI (the primary test mode) runs each `#[tokio::test]` as a plain
+      # `block_on` whose stack suspends on the host event loop, so the runner
+      # needs a node with JSPI on by default (V8 13.x+). Installed after emsdk
+      # so it wins PATH for the cargo runner.
       - uses: actions/setup-node@v4
         with:
           node-version: 26
@@ -1191,18 +1195,35 @@ jobs:
         with:
           tool: cargo-hack
 
+      # Every feature combination must at least compile for the target
+      # (type-check only; no emcc involvement). `net` is excluded: reactor
+      # support is a planned follow-up and the feature is rejected by a
+      # targeted compile_error until then.
       - name: Check tokio feature matrix for emscripten
         run: cargo hack check -p tokio --each-feature --exclude-features net,process,signal,rt-multi-thread,io-uring,taskdump,schedule-latency --target wasm32-unknown-emscripten
         working-directory: tokio
         env:
-          RUSTFLAGS: ""
+          RUSTFLAGS: "--cfg tokio_unstable"
 
+      # Emscripten runtime support is experimental and gated behind
+      # `--cfg tokio_unstable` (see the emscripten module docs).
       - name: Test tokio for emscripten
-        run: cargo test -p tokio --target wasm32-unknown-emscripten --features "rt,time,sync,macros,io-util,test-util" --tests
+        run: cargo test -p tokio --target wasm32-unknown-emscripten --features "rt,time,sync,macros,fs,io-util,io-std,test-util" --tests
         working-directory: tokio
         env:
           CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: node
-          RUSTFLAGS: "-C link-args=-sALLOW_MEMORY_GROWTH=1 -C link-args=-sEXIT_RUNTIME=1 -C link-args=-sSTACK_SIZE=1048576"
+          RUSTFLAGS: "--cfg tokio_unstable -C link-args=-sALLOW_MEMORY_GROWTH=1 -C link-args=-sEXIT_RUNTIME=1 -C link-args=-sJSPI -C link-args=-sSTACK_SIZE=1048576"
+
+      # The `emscripten_jspi(false)` contract with no JSPI linked at all:
+      # synchronous `block_on` completions work and would-suspend cases panic
+      # with the documented message. Proves the non-JSPI subset needs no JSPI
+      # engine support.
+      - name: Test tokio for emscripten (no JSPI)
+        run: cargo test -p tokio --target wasm32-unknown-emscripten --features "rt,time,sync,macros,fs,io-util,io-std,test-util" --test rt_emscripten_block_on
+        working-directory: tokio
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: node
+          RUSTFLAGS: "--cfg tokio_unstable -C link-args=-sALLOW_MEMORY_GROWTH=1 -C link-args=-sEXIT_RUNTIME=1 -C link-args=-sSTACK_SIZE=1048576"
 
   check-external-types:
     name: check-external-types (${{ matrix.os }})

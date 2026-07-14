@@ -222,6 +222,18 @@ cfg_rt! {
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
     {
-        crate::runtime::spawn_blocking(f)
+        // Emscripten has no threadpool (single-threaded JS worker), so run
+        // the closure as a canonical spawned task (inside its own task
+        // context) and return its `JoinHandle`. Inlined rather than routed
+        // through `crate::blocking` because that module is gated on
+        // `fs`/`io-std`/`net`, while `spawn_blocking` is available under `rt`.
+        #[cfg(target_os = "emscripten")]
+        {
+            crate::runtime::Handle::current().spawn(async move { f() })
+        }
+        #[cfg(not(target_os = "emscripten"))]
+        {
+            crate::runtime::spawn_blocking(f)
+        }
     }
 }

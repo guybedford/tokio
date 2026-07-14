@@ -415,11 +415,12 @@
 mod tests;
 
 pub(crate) mod context;
-
+/// Host glue for emscripten hosted event-loop runtimes: `setTimeout` arming,
+/// keepalive, pick-up latching, and JSPI park plumbing over `emscripten::ffi`.
+#[cfg(all(target_os = "emscripten", feature = "rt"))]
+pub(crate) mod hosted;
 pub(crate) mod park;
-
 pub(crate) mod driver;
-
 pub(crate) mod scheduler;
 
 cfg_io_driver_impl! {
@@ -438,6 +439,8 @@ pub(crate) enum TimerFlavor {
     Alternative,
 }
 
+// Timer driver and time types. The wheel is shared with emscripten; only the
+// park primitive diverges.
 cfg_time! {
     pub(crate) mod time;
 
@@ -535,6 +538,7 @@ cfg_signal_internal_and_unix! {
     pub(crate) mod signal;
 }
 
+// Core runtime infrastructure, shared by every scheduler including emscripten's.
 cfg_rt! {
     pub(crate) mod task;
 
@@ -550,6 +554,8 @@ cfg_rt! {
     }
 
     cfg_fs! {
+        // Emscripten's `fs` uses the inline blocking shim, not the pool.
+        #[cfg_attr(target_os = "emscripten", allow(unused_imports))]
         pub(crate) use blocking::spawn_mandatory_blocking;
     }
 

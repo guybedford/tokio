@@ -15,14 +15,19 @@ use crate::util::{waker_ref, RngSeedGenerator, Wake, WakerRef};
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
+#[cfg_attr(target_os = "emscripten", allow(unused_imports))] // block_on body is cfg'd out
 use std::future::{poll_fn, Future};
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Release};
+#[cfg_attr(target_os = "emscripten", allow(unused_imports))] // block_on body is cfg'd out
 use std::task::Poll::{Pending, Ready};
 use std::task::Waker;
 use std::thread::ThreadId;
 use std::time::Duration;
 use std::time::Instant;
 use std::{fmt, thread};
+
+#[cfg(target_os = "emscripten")]
+pub(crate) mod hosted_event_loop;
 
 /// Executes tasks on the current thread
 pub(crate) struct CurrentThread {
@@ -201,9 +206,17 @@ impl CurrentThread {
 
     #[track_caller]
     pub(crate) fn block_on<F: Future>(&self, handle: &scheduler::Handle, future: F) -> F::Output {
-        pin!(future);
+        // Emscripten can't park the thread (it would block the host event loop),
+        // so `block_on` drives to a synchronous fixed point and panics if the
+        // future would suspend. See `hosted_event_loop::block_on`.
+        #[cfg(target_os = "emscripten")]
+        return hosted_event_loop::block_on(self, handle, future);
 
-        crate::runtime::context::enter_runtime(handle, false, |blocking| {
+        #[cfg(not(target_os = "emscripten"))]
+        {
+            pin!(future);
+
+            crate::runtime::context::enter_runtime(handle, false, |blocking| {
             let handle = handle.as_current_thread();
 
             // Attempt to steal the scheduler core and block_on the future if we can
@@ -239,6 +252,7 @@ impl CurrentThread {
                 }
             }
         })
+        }
     }
 
     fn take_core(&self, handle: &Arc<Handle>) -> Option<CoreGuard<'_>> {
@@ -378,6 +392,9 @@ fn wake_deferred_tasks_and_free(context: &Context) {
 
 // ===== impl Context =====
 
+// The native park-driven `block_on` machinery; emscripten replaces it with its
+// own cooperative drive loop (`hosted_event_loop`), so these are unused there.
+#[cfg_attr(target_os = "emscripten", allow(dead_code))]
 impl Context {
     /// Execute the closure with the given scheduler core stored in the
     /// thread-local context.
@@ -484,7 +501,9 @@ impl Context {
         let core = self.core.borrow_mut().take().expect("core missing");
         (core, ret)
     }
+}
 
+impl Context {
     pub(crate) fn defer(&self, waker: &Waker) {
         self.defer.defer(waker);
     }
@@ -617,6 +636,7 @@ impl Handle {
         self.shared.inject.pop()
     }
 
+    #[cfg_attr(target_os = "emscripten", allow(dead_code))] // native block_on only
     fn waker_ref(me: &Arc<Self>) -> WakerRef<'_> {
         // Set woken to true when enter block_on, ensure outer future
         // be polled for the first time when enter loop
@@ -806,6 +826,7 @@ struct CoreGuard<'a> {
 
 impl CoreGuard<'_> {
     #[track_caller]
+    #[cfg_attr(target_os = "emscripten", allow(dead_code))] // emscripten drives via hosted_event_loop
     fn block_on<F: Future>(self, future: F) -> F::Output {
         let ret = self.enter(|mut core, context| {
             let waker = Handle::waker_ref(&context.handle);
