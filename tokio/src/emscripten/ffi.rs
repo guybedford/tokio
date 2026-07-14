@@ -36,6 +36,10 @@ extern "C" {
         user_data: *mut std::ffi::c_void,
     ) -> i32;
 
+    /// High-resolution time in ms since page load.
+    #[cfg(feature = "rt")]
+    pub(crate) fn emscripten_get_now() -> f64;
+
     /// Cancel a timer from `emscripten_set_timeout`.
     #[cfg(feature = "rt")]
     pub(crate) fn emscripten_clear_timeout(id: i32);

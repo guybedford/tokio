@@ -28,6 +28,12 @@ struct Inner {
     #[cfg(not(all(target_os = "emscripten", feature = "rt")))]
     mutex: Mutex<()>,
     condvar: Condvar,
+    /// The hosted runtime this parker belongs to, when it is the io-less
+    /// driver stack's unpark path: external wakes must request that runtime's
+    /// pick-up, not just resume parked stacks. Unset for the thread-local
+    /// blocking parker. (`OnceLock` keeps `Inner`'s auto traits intact.)
+    #[cfg(all(target_os = "emscripten", feature = "rt"))]
+    hosted: std::sync::OnceLock<std::sync::Arc<crate::runtime::hosted::HostedState>>,
 }
 
 #[cfg(not(all(target_os = "emscripten", feature = "rt")))]
@@ -58,6 +64,8 @@ impl ParkThread {
                 #[cfg(not(all(target_os = "emscripten", feature = "rt")))]
                 mutex: Mutex::new(()),
                 condvar: Condvar::new(),
+                #[cfg(all(target_os = "emscripten", feature = "rt"))]
+                hosted: std::sync::OnceLock::new(),
             }),
         }
     }
@@ -87,11 +95,11 @@ impl ParkThread {
 // ==== impl Inner ====
 
 /// Panic with an actionable message when a blocking wait is attempted in a
-/// binary that cannot suspend (see `runtime::jspi::jspi_linked`).
+/// binary that cannot suspend (see `runtime::hosted::jspi_linked`).
 #[cfg(all(target_os = "emscripten", feature = "rt"))]
 fn assert_jspi_linked() {
     assert!(
-        crate::runtime::jspi::jspi_linked(),
+        crate::runtime::hosted::jspi_linked(),
         "cannot block the thread: waiting would require suspending to the \
          host event loop, which needs JSPI. Link with `-sJSPI`."
     );
@@ -107,13 +115,13 @@ impl Inner {
     #[cfg(all(target_os = "emscripten", feature = "rt"))]
     fn park(&self) {
         assert_jspi_linked();
-        crate::runtime::jspi::park_on_host(-1.0);
+        crate::runtime::hosted::park_on_host(-1.0);
     }
 
     #[cfg(all(target_os = "emscripten", feature = "rt"))]
     fn park_timeout(&self, dur: Duration) {
         assert_jspi_linked();
-        crate::runtime::jspi::park_on_host(dur.as_secs_f64() * 1000.0);
+        crate::runtime::hosted::park_on_host(dur.as_secs_f64() * 1000.0);
     }
 
     #[cfg(not(all(target_os = "emscripten", feature = "rt")))]
@@ -216,6 +224,12 @@ impl Inner {
         }
     }
 
+    #[cfg(all(target_os = "emscripten", feature = "rt"))]
+    fn unpark(&self) {
+        // The analogue of the native condvar notify; see `route_unpark`.
+        crate::runtime::hosted::route_unpark(self.hosted.get());
+    }
+
     #[cfg(not(all(target_os = "emscripten", feature = "rt")))]
     fn unpark(&self) {
         // To ensure the unparked thread will observe any writes we made before
@@ -246,14 +260,6 @@ impl Inner {
         self.condvar.notify_one();
     }
 
-    // On single-threaded Emscripten, resume the JSPI-parked stacks. Each re-checks
-    // its own condition and re-parks if this wake wasn't its. Never drives inline,
-    // so `Waker::wake` stays O(1) and can't reenter user code.
-    #[cfg(all(target_os = "emscripten", feature = "rt"))]
-    fn unpark(&self) {
-        crate::runtime::jspi::unpark_all();
-    }
-
     fn shutdown(&self) {
         self.condvar.notify_all();
     }
@@ -270,6 +276,16 @@ impl Default for ParkThread {
 impl UnparkThread {
     pub(crate) fn unpark(&self) {
         self.inner.unpark();
+    }
+
+    /// Wire this parker to its hosted runtime (builder only; io-less driver
+    /// stacks): external wakes then route through its pick-ups.
+    #[cfg(all(target_os = "emscripten", feature = "rt"))]
+    pub(crate) fn set_hosted(
+        &self,
+        hosted: std::sync::Arc<crate::runtime::hosted::HostedState>,
+    ) {
+        self.inner.hosted.set(hosted).ok().expect("hosted set once");
     }
 }
 

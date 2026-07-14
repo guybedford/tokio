@@ -654,8 +654,8 @@ cfg_not_rt! {
     pub(crate) mod runtime;
 }
 
-// Emscripten platform support: the FFI bindings behind the JSPI park
-// primitive (`crate::runtime::jspi`).
+// Emscripten platform support: the FFI bindings behind the hosted
+// event-loop glue (`crate::runtime::hosted`) and the JSPI park primitive.
 #[cfg(target_os = "emscripten")]
 pub(crate) mod emscripten;
 

@@ -19,11 +19,11 @@ use std::sync::atomic::Ordering;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
-#[cfg_attr(target_os = "emscripten", allow(unused_imports))]
+#[cfg_attr(target_os = "emscripten", allow(unused_imports))] // block_on body is cfg'd out
 use std::future::{poll_fn, Future};
 #[cfg_attr(target_os = "emscripten", allow(unused_imports))]
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Release};
-#[cfg_attr(target_os = "emscripten", allow(unused_imports))]
+#[cfg_attr(target_os = "emscripten", allow(unused_imports))] // block_on body is cfg'd out
 use std::task::Poll::{Pending, Ready};
 use std::task::Waker;
 use std::thread::ThreadId;
@@ -294,7 +294,7 @@ impl CurrentThread {
         })
     }
 
-    pub(crate) fn shutdown(&mut self, handle: &scheduler::Handle) {
+    pub(crate) fn shutdown(&self, handle: &scheduler::Handle) {
         let handle = handle.as_current_thread();
 
         // Avoid a double panic if we are currently panicking and
@@ -850,7 +850,7 @@ struct CoreGuard<'a> {
 
 impl CoreGuard<'_> {
     #[track_caller]
-    #[cfg(not(target_os = "emscripten"))]
+    #[cfg(not(target_os = "emscripten"))] // emscripten drives via event_loop
     fn block_on<F: Future>(self, future: F) -> F::Output {
         let ret = self.enter(|mut core, context| {
             let waker = Handle::waker_ref(&context.handle);

@@ -199,5 +199,12 @@ allowed_external_types = [
   "tokio_macros::*",
 ]
 
+# Runs `main` bare so it can return into the host event loop: the no-JSPI
+# schedule/drive contract (see the emscripten CI job's dedicated step).
+[[test]]
+name = "emscripten_schedule_drive"
+path = "tests/emscripten_schedule_drive.rs"
+harness = false
+
 [lints]
 workspace = true

@@ -7,7 +7,7 @@ use std::cell::Cell;
 use crate::util::rand::FastRand;
 
 #[cfg(target_os = "emscripten")]
-use crate::runtime::jspi::JspiContext;
+use crate::runtime::hosted::HostContext;
 
 cfg_rt! {
     mod blocking;
@@ -67,10 +67,13 @@ struct Context {
     /// the scheduler
     budget: Cell<coop::Budget>,
 
-    /// Emscripten host-loop state: the JSPI-parked stacks. See
-    /// `crate::runtime::jspi`.
+    /// Emscripten host-loop state: the drive latch (adjacent to, but distinct
+    /// from, `runtime` above — it additionally spans reactor dispatch and
+    /// survives blocking-syscall suspensions, while `EnterRuntime` is swapped
+    /// out across JSPI parks), the runtimes with latched pick-ups, and the
+    /// JSPI-parked stacks. See `crate::runtime::hosted`.
     #[cfg(all(target_os = "emscripten", feature = "rt"))]
-    jspi: JspiContext,
+    hosted: HostContext,
 
     #[cfg(all(
         tokio_unstable,
@@ -119,7 +122,7 @@ tokio_thread_local! {
             budget: Cell::new(coop::Budget::unconstrained()),
 
             #[cfg(all(target_os = "emscripten", feature = "rt"))]
-            jspi: JspiContext::new(),
+            hosted: HostContext::new(),
 
             #[cfg(all(
                 tokio_unstable,
@@ -197,8 +200,8 @@ cfg_rt! {
     /// This thread's emscripten host-loop state (drive latch, latched
     /// pick-ups, parked stacks).
     #[cfg(target_os = "emscripten")]
-    pub(crate) fn with_jspi<R>(f: impl FnOnce(&JspiContext) -> R) -> R {
-        CONTEXT.with(|c| f(&c.jspi))
+    pub(crate) fn with_hosted<R>(f: impl FnOnce(&HostContext) -> R) -> R {
+        CONTEXT.with(|c| f(&c.hosted))
     }
 
     /// Swap the runtime-entered flag out across a JSPI park, so host callbacks

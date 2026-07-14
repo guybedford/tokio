@@ -2,6 +2,9 @@
 
 use crate::runtime::blocking::BlockingPool;
 use crate::runtime::scheduler::CurrentThread;
+#[cfg(target_os = "emscripten")]
+#[cfg(all(target_os = "emscripten", tokio_unstable))]
+use crate::runtime::scheduler::HostedEventLoop;
 use crate::runtime::{context, Builder, EnterGuard, Handle, BOX_FUTURE_THRESHOLD};
 use crate::task::JoinHandle;
 
@@ -31,10 +34,10 @@ use std::time::Duration;
 #[derive(Debug)]
 pub struct LocalRuntime {
     /// Task scheduler
-    scheduler: LocalRuntimeScheduler,
+    pub(super) scheduler: LocalRuntimeScheduler,
 
     /// Handle to runtime, also contains driver handles
-    handle: Handle,
+    pub(super) handle: Handle,
 
     /// Blocking pool handle, used to signal shutdown
     blocking_pool: BlockingPool,
@@ -48,6 +51,10 @@ pub struct LocalRuntime {
 pub(crate) enum LocalRuntimeScheduler {
     /// Execute all tasks on the current-thread.
     CurrentThread(CurrentThread),
+    /// The emscripten hosted event loop scheduler (cooperatively host-driven).
+    /// Only constructible through the `tokio_unstable` HostedRuntime builder.
+    #[cfg(all(target_os = "emscripten", tokio_unstable))]
+    HostedEventLoop(HostedEventLoop),
 }
 
 impl LocalRuntime {
@@ -253,10 +260,10 @@ impl LocalRuntime {
 
         let _enter = self.enter();
 
-        if let LocalRuntimeScheduler::CurrentThread(exec) = &self.scheduler {
-            exec.block_on(&self.handle.inner, future)
-        } else {
-            unreachable!("LocalRuntime only supports current_thread")
+        match &self.scheduler {
+            LocalRuntimeScheduler::CurrentThread(exec) => exec.block_on(&self.handle.inner, future),
+            #[cfg(all(target_os = "emscripten", tokio_unstable))]
+            LocalRuntimeScheduler::HostedEventLoop(ev) => ev.block_on(&self.handle.inner, future),
         }
     }
 
@@ -385,13 +392,17 @@ impl LocalRuntime {
 
 impl Drop for LocalRuntime {
     fn drop(&mut self) {
-        if let LocalRuntimeScheduler::CurrentThread(current_thread) = &mut self.scheduler {
-            // This ensures that tasks spawned on the current-thread
-            // runtime are dropped inside the runtime's context.
-            let _guard = context::try_set_current(&self.handle.inner);
-            current_thread.shutdown(&self.handle.inner);
-        } else {
-            unreachable!("LocalRuntime only supports current-thread")
+        // This ensures that tasks spawned on the runtime are dropped inside the
+        // runtime's context.
+        let _guard = context::try_set_current(&self.handle.inner);
+        match &mut self.scheduler {
+            LocalRuntimeScheduler::CurrentThread(current_thread) => {
+                current_thread.shutdown(&self.handle.inner);
+            }
+            #[cfg(all(target_os = "emscripten", tokio_unstable))]
+            LocalRuntimeScheduler::HostedEventLoop(event_loop) => {
+                event_loop.shutdown(&self.handle.inner);
+            }
         }
     }
 }

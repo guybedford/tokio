@@ -86,6 +86,17 @@ impl Handle {
         self.io.unpark();
     }
 
+    /// Wire this driver stack to its hosted runtime (builder only): external
+    /// wakes and readiness deliveries then route through its pick-ups and
+    /// drives, whichever unpark path (reactor or parker) the stack uses.
+    #[cfg(all(target_os = "emscripten", feature = "rt"))]
+    pub(crate) fn set_hosted(
+        &self,
+        hosted: std::sync::Arc<crate::runtime::hosted::HostedState>,
+    ) {
+        self.io.set_hosted(hosted);
+    }
+
     cfg_io_driver! {
         #[track_caller]
         pub(crate) fn io(&self) -> &crate::runtime::io::Handle {
@@ -194,6 +205,17 @@ cfg_io_driver! {
             match self {
                 IoHandle::Enabled(handle) => handle.unpark(),
                 IoHandle::Disabled(handle) => handle.unpark(),
+            }
+        }
+
+        #[cfg(all(target_os = "emscripten", feature = "rt"))]
+        pub(crate) fn set_hosted(
+            &self,
+            hosted: std::sync::Arc<crate::runtime::hosted::HostedState>,
+        ) {
+            match self {
+                IoHandle::Enabled(handle) => handle.set_hosted(hosted),
+                IoHandle::Disabled(handle) => handle.set_hosted(hosted),
             }
         }
 

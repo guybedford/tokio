@@ -8,6 +8,8 @@ use crate::runtime::{
 use crate::runtime::{metrics::HistogramConfiguration, TaskMeta};
 
 use crate::runtime::{LocalOptions, LocalRuntime};
+#[cfg(all(target_os = "emscripten", tokio_unstable))]
+use crate::runtime::HostedRuntime;
 use crate::util::rand::{RngSeed, RngSeedGenerator};
 
 use crate::runtime::blocking::BlockingPool;
@@ -1669,6 +1671,46 @@ impl Builder {
             handle,
             blocking_pool,
         ))
+    }
+
+    /// Builds an emscripten hosted event-loop runtime: a `current_thread`
+    /// scheduler driven cooperatively by the host JS event loop instead of by
+    /// parking a thread, so it never blocks the host. Submit roots with
+    /// [`HostedRuntime::schedule`] and pump with [`HostedRuntime::drive`];
+    /// after the first drive the host's own wakes (timer ticks, socket
+    /// readiness callbacks) re-drive it, so it is self-sustaining. Any number
+    /// of hosted runtimes may coexist on the thread, each driven by its own
+    /// host turns.
+    ///
+    /// [`HostedRuntime::schedule`]: crate::runtime::HostedRuntime::schedule
+    /// [`HostedRuntime::drive`]: crate::runtime::HostedRuntime::drive
+    /// Unstable: requires `--cfg tokio_unstable` while the hosted execution
+    /// model settles.
+    #[cfg(all(target_os = "emscripten", tokio_unstable))]
+    pub fn build_hosted_event_loop_runtime(&mut self) -> io::Result<HostedRuntime> {
+        use crate::runtime::hosted::HostedState;
+        use crate::runtime::local_runtime::LocalRuntimeScheduler;
+        use crate::runtime::scheduler::HostedEventLoop;
+
+        let tid = std::thread::current().id();
+        let (scheduler, handle, blocking_pool) =
+            self.build_current_thread_runtime_components(Some(tid))?;
+
+        // The runtime's host-loop identity: the epoll readiness callback and
+        // the drive `setTimeout` both resolve to it, and it resolves (weakly)
+        // to the scheduler wired in `HostedEventLoop::new`.
+        let hosted = HostedState::new();
+        handle.inner.driver().set_hosted(hosted.clone());
+
+        Ok(HostedRuntime::new(LocalRuntime::from_parts(
+            LocalRuntimeScheduler::HostedEventLoop(HostedEventLoop::new(
+                scheduler,
+                handle.clone(),
+                hosted,
+            )),
+            handle,
+            blocking_pool,
+        )))
     }
 
     fn build_current_thread_runtime_components(

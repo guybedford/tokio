@@ -1,7 +1,15 @@
-//! Emscripten single-threaded `block_on` kernel. Drives a root future on the
-//! `current_thread` scheduler, suspending on the host JS event loop via JSPI
-//! (see `runtime::jspi`) when it would block. A `current_thread` submodule for
-//! its private access to `Core`/`Context`.
+//! The hosted event-loop scheduler kernel: the `current_thread`-coupled half
+//! of the event-loop runtime, kept here (a `current_thread` submodule) for its
+//! private access to the scheduler `Core`/`Context`. The host-loop glue (timer
+//! arming, keepalive, `schedule`, the public `drive`) is exposed via
+//! `crate::runtime::hosted`.
+//!
+//! Two entry points share one fixed-point [`drive_loop`]:
+//! * [`pump`] backs `block_on`: drives one root to completion, parking on the
+//!   host via JSPI at its cliffs (panicking without `-sJSPI`).
+//! * [`drive_exec`] backs `schedule`/`drive`: cooperatively pumps a hosted
+//!   runtime to a quiescent fixed point, bounded by a poll budget, never
+//!   blocking.
 
 use crate::loom::sync::Arc;
 use crate::runtime::{
@@ -16,6 +24,176 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::task::Poll::{Pending, Ready};
+
+/// The `Arc`'d half of a hosted runtime's scheduler: the drive capability
+/// that host callbacks resolve through the runtime's
+/// [`HostedState`](crate::runtime::hosted::HostedState) (which holds a
+/// `Weak` to this). Heap-shared so the user may move or drop the
+/// [`LocalRuntime`](crate::runtime::LocalRuntime) freely while callbacks are
+/// armed.
+pub(crate) struct HostedExec {
+    pub(crate) exec: CurrentThread,
+    pub(crate) rt_handle: crate::runtime::Handle,
+    #[cfg(tokio_unstable)] // read only by the HostedRuntime accessor
+    pub(crate) hosted: Arc<crate::runtime::hosted::HostedState>,
+}
+
+impl std::fmt::Debug for HostedExec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HostedExec").finish()
+    }
+}
+
+/// The event-loop runtime's scheduler: a `current_thread` scheduler driven
+/// cooperatively from the host event loop rather than by `block_on`. The
+/// [`LocalRuntimeScheduler::HostedEventLoop`](crate::runtime::LocalRuntime) variant.
+#[cfg(tokio_unstable)]
+#[derive(Debug)]
+pub(crate) struct HostedEventLoop {
+    inner: Arc<HostedExec>,
+}
+
+#[cfg(tokio_unstable)]
+impl HostedEventLoop {
+    /// Wires the runtime's `HostedState` to the freshly built scheduler: after
+    /// this, the state's armed host callbacks can drive it.
+    pub(crate) fn new(
+        exec: CurrentThread,
+        rt_handle: crate::runtime::Handle,
+        hosted: Arc<crate::runtime::hosted::HostedState>,
+    ) -> HostedEventLoop {
+        let inner = Arc::new(HostedExec {
+            exec,
+            rt_handle,
+            hosted: hosted.clone(),
+        });
+        hosted.set_exec(Arc::downgrade(&inner));
+        HostedEventLoop { inner }
+    }
+
+    pub(crate) fn hosted(&self) -> &Arc<crate::runtime::hosted::HostedState> {
+        &self.inner.hosted
+    }
+
+    /// Synchronously drive `future` to completion (panicking if it would
+    /// suspend), delegating to the inner `current_thread` scheduler — the same
+    /// drive-or-panic `Runtime::block_on` gets. Distinct from [`drive_exec`],
+    /// which pumps cooperatively and never panics.
+    #[track_caller]
+    pub(crate) fn block_on<F: Future>(&self, handle: &scheduler::Handle, future: F) -> F::Output {
+        self.inner.exec.block_on(handle, future)
+    }
+}
+
+/// Drive to a quiescent fixed point without blocking, bounded by `budget`
+/// polls — the cooperative counterpart of `block_on`. Backs the host
+/// pick-up in [`crate::runtime::hosted`].
+pub(crate) fn drive_exec(hosted_exec: &HostedExec, budget: u32) -> Driven {
+    let sched = hosted_exec.rt_handle.inner.clone();
+    // `None` means the core is checked out (a drive or `block_on` on the
+    // stack, or — under JSPI — a suspended one): report `Busy` so the
+    // caller leaves the armed timer and keepalive alone. Conflating this
+    // with `Idle` would disarm a wake the core holder still depends on.
+    let core = match hosted_exec.exec.core.take() {
+        Some(core) => core,
+        None => return Driven::Busy,
+    };
+    let handle: Arc<Handle> = sched.as_current_thread().clone();
+    let cx = scheduler::Context::CurrentThread(Context {
+        handle,
+        core: RefCell::new(Some(core)),
+        defer: Defer::new(),
+    });
+
+    struct RestoreCore<'a> {
+        exec: &'a CurrentThread,
+        cx: &'a scheduler::Context,
+    }
+    impl Drop for RestoreCore<'_> {
+        fn drop(&mut self) {
+            if let Some(core) = self.cx.expect_current_thread().core.borrow_mut().take() {
+                self.exec.core.set(core);
+            }
+        }
+    }
+    let _restore = RestoreCore {
+        exec: &hosted_exec.exec,
+        cx: &cx,
+    };
+
+    // Each cooperative drive is one host-loop cycle: it resumed from a host
+    // wake (unpark) and ends by yielding control back (park). Record the same
+    // busy-time/poll metrics the native scheduler does around its park loop.
+    if let Some(core) = cx.expect_current_thread().core.borrow_mut().as_mut() {
+        core.metrics.unparked();
+        core.metrics.start_processing_scheduled_tasks();
+    }
+
+    // Reuse `drive_loop` (shared with `block_on`) with a never-ready root, so
+    // scheduled roots and timers drain through the exact same path.
+    let mut budget = PollBudget::bounded(budget);
+    let pending = std::future::pending::<()>();
+    crate::pin!(pending);
+    let _: Outcome<()> = context::enter_runtime(&sched, false, |_| {
+        context::set_scheduler(&cx, || drive_loop(pending, &cx, &mut budget))
+    });
+
+    {
+        let inner = cx.expect_current_thread();
+        if let Some(core) = inner.core.borrow_mut().as_mut() {
+            core.metrics.end_processing_scheduled_tasks();
+            core.metrics.about_to_park();
+            core.submit_metrics(&inner.handle);
+        }
+    }
+
+    let inner = cx.expect_current_thread();
+    let handle = &inner.handle;
+
+    // Budget spent with work still ready: yield to the host and re-drive.
+    // A budget that ran dry on exactly the last task has nothing left to
+    // yield for, so check the queues rather than the counter alone.
+    if budget.exhausted {
+        let work_remains = inner
+            .core
+            .borrow()
+            .as_ref()
+            .is_some_and(|core| !core.tasks.is_empty())
+            || handle.shared.inject.len() > 0
+            || handle.shared.woken.load(Ordering::Acquire);
+        if work_remains {
+            return Driven::Yield;
+        }
+    }
+
+    match next_timer_ms(handle) {
+        Some(ms) => Driven::Timer(ms),
+        None => Driven::Idle,
+    }
+}
+
+#[cfg(tokio_unstable)]
+impl HostedEventLoop {
+    /// Tear down the scheduler's tasks (mirrors `CurrentThread`'s `Drop`).
+    pub(crate) fn shutdown(&mut self, handle: &scheduler::Handle) {
+        self.inner.exec.shutdown(handle);
+    }
+}
+
+/// What should wake the cooperatively-driven event-loop runtime next, returned
+/// by [`drive_exec`]. The host loop acts on it: arm a timer, yield
+/// immediately, or rest until an external wake.
+pub(crate) enum Driven {
+    /// Nothing ready and no timer: rest until an external wake (I/O callback).
+    Idle,
+    /// Pending work bounded by a timer; re-drive within `ms` at the latest.
+    Timer(f64),
+    /// Budget spent with work still ready; re-drive immediately (`setTimeout(0)`).
+    Yield,
+    /// The core is checked out by another drive on (or, under JSPI, suspended
+    /// on) this thread; do nothing — the holder re-arms on exit.
+    Busy,
+}
 
 /// Bounds task polls per drive so a busy runtime yields a host turn (parks 0 ms
 /// then re-drives) instead of starving other agents. Only a non-JSPI `block_on`
@@ -110,7 +288,13 @@ pub(crate) unsafe fn pump<F: Future>(
     }
     let _restore = RestoreCore { exec, cx: &cx };
 
-    let jspi = crate::runtime::jspi::jspi_linked();
+    // Mark a drive on the stack so an external wake (any hosted runtime's)
+    // latches a pick-up instead of driving inline (which would re-enter
+    // `enter_runtime` and panic). Releasing the guard — including on unwind —
+    // delivers every pick-up latched while this `block_on` held the thread.
+    let _drive = crate::runtime::hosted::enter_drive();
+
+    let jspi = crate::runtime::hosted::jspi_linked();
 
     loop {
         // Bracket each drive with the metrics native records around its park loop.
@@ -120,7 +304,7 @@ pub(crate) unsafe fn pump<F: Future>(
         // JSPI: bounded budget so a self-rewaking task yields a host turn rather
         // than starving the thread. Non-JSPI: unbounded (no host loop to yield to).
         let mut budget = if jspi {
-            PollBudget::bounded(crate::runtime::jspi::HOST_DRIVE_BUDGET)
+            PollBudget::bounded(crate::runtime::hosted::HOST_DRIVE_BUDGET)
         } else {
             PollBudget::unbounded()
         };
@@ -197,7 +381,7 @@ fn park_at_cliff(exec: &CurrentThread, cx: &scheduler::Context, timeout_ms: f64)
         }
     }
 
-    crate::runtime::jspi::park_on_host(timeout_ms);
+    crate::runtime::hosted::park_on_host(timeout_ms);
 
     // Re-acquire. The slot is populated unless a sibling stack resumed first this
     // batch and hasn't re-parked yet — re-park briefly rather than spin.
@@ -209,7 +393,7 @@ fn park_at_cliff(exec: &CurrentThread, cx: &scheduler::Context, timeout_ms: f64)
                 borrow.as_mut().expect("core present").metrics.unparked();
                 break;
             }
-            None => crate::runtime::jspi::park_on_host(0.0),
+            None => crate::runtime::hosted::park_on_host(0.0),
         }
     }
 }

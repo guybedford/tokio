@@ -396,6 +396,12 @@ mod emscripten {
     /// fresh host tick, never re-entered while `drain` holds the borrow.
     struct PollState {
         inner: RefCell<PollInner>,
+        /// The owning hosted runtime, when there is one: readiness deliveries
+        /// drive it, and external wakes route through its pick-ups. Unset for
+        /// runtimes driven only by `block_on` (readiness then reaches them by
+        /// resuming their JSPI-parked stacks).
+        #[cfg(feature = "rt")]
+        hosted: std::cell::OnceCell<Arc<crate::runtime::hosted::HostedState>>,
     }
 
     struct PollInner {
@@ -411,7 +417,7 @@ mod emscripten {
 
     /// A reference to the I/O reactor: a clone of the driver's `Registry` (same
     /// epoll fd) for registering/deregistering sockets, plus the shared
-    /// [`PollState`] for draining.
+    /// [`PollState`] for draining and hosted-runtime wiring.
     pub(crate) struct Handle {
         registry: mio::Registry,
         registrations: RegistrationSet,
@@ -458,12 +464,22 @@ mod emscripten {
         // manual pollers observe it.
         #[cfg(not(feature = "rt"))]
         state.drain();
-        // Dispatch readiness and resume any JSPI-parked stacks; the woken
-        // `block_on` re-enters its fixed point from the resume.
         #[cfg(feature = "rt")]
-        {
-            state.drain();
-            crate::runtime::jspi::unpark_all();
+        match state.hosted.get() {
+            // A hosted runtime: drive it (the drive drains this reactor inside
+            // its latch, so wakes settle into one fixed point — no extra
+            // host-turn hop). If another drive holds the thread, this latches
+            // a pick-up and the events stay queued in the epoll set.
+            Some(hosted) => {
+                hosted.drive();
+            }
+            // A `block_on`-driven runtime: dispatch readiness and resume any
+            // JSPI-parked stacks; the woken `block_on` re-enters its fixed
+            // point from the resume.
+            None => {
+                state.drain();
+                crate::runtime::hosted::unpark_all();
+            }
         }
     }
 
@@ -500,6 +516,8 @@ mod emscripten {
                     poll,
                     events: mio::Events::with_capacity(nevents.max(1)),
                 }),
+                #[cfg(feature = "rt")]
+                hosted: std::cell::OnceCell::new(),
             });
             let epfd = state.inner.borrow().poll.as_raw_fd();
             let rc = unsafe {
@@ -563,15 +581,27 @@ mod emscripten {
 
     impl Handle {
         /// External wakes reach the scheduler through the driver's `unpark`.
-        /// With no reactor thread to wake, resume the JSPI-parked stacks; each
-        /// re-checks its own fixed point. Without `rt` nothing can be parked,
-        /// so there is nothing to wake.
+        /// With no reactor thread to wake, route to a host pick-up or a
+        /// parked-stack resume; see `route_unpark`. Without `rt` nothing can
+        /// be parked or driven, so there is nothing to wake.
         pub(crate) fn unpark(&self) {
             #[cfg(feature = "rt")]
-            crate::runtime::jspi::unpark_all();
+            crate::runtime::hosted::route_unpark(self.state.hosted.get());
+        }
+
+        /// Wire this reactor to its hosted runtime (builder only): readiness
+        /// deliveries drive it, and wakes route through its pick-ups.
+        #[cfg(feature = "rt")]
+        pub(crate) fn set_hosted(
+            &self,
+            hosted: Arc<crate::runtime::hosted::HostedState>,
+        ) {
+            self.state.hosted.set(hosted).ok().expect("hosted set once");
         }
 
         /// One full drain of the reactor: fetch and dispatch all ready events.
+        /// Called inside a hosted drive's latch so the wakes settle into its
+        /// fixed point.
         pub(crate) fn drain(&self) {
             self.state.drain();
         }

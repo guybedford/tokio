@@ -2,6 +2,11 @@ cfg_rt! {
     pub(crate) mod current_thread;
     pub(crate) use current_thread::CurrentThread;
 
+    #[cfg(target_os = "emscripten")]
+    pub(crate) use current_thread::hosted_event_loop::{drive_exec, Driven, HostedExec};
+    #[cfg(all(target_os = "emscripten", tokio_unstable))]
+    pub(crate) use current_thread::hosted_event_loop::HostedEventLoop;
+
     mod defer;
     use defer::Defer;
 

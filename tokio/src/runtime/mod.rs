@@ -415,14 +415,13 @@
 mod tests;
 
 pub(crate) mod context;
-
+/// Host glue for emscripten hosted event-loop runtimes: `setTimeout` arming,
+/// keepalive, pick-up latching, and JSPI park plumbing over `emscripten::ffi`.
 #[cfg(all(target_os = "emscripten", feature = "rt"))]
-pub(crate) mod jspi;
+pub(crate) mod hosted;
 
 pub(crate) mod park;
-
 pub(crate) mod driver;
-
 pub(crate) mod scheduler;
 
 cfg_io_driver_impl! {
@@ -623,6 +622,9 @@ cfg_rt! {
 
     mod local_runtime;
     pub use local_runtime::{LocalRuntime, LocalOptions};
+
+    #[cfg(all(target_os = "emscripten", tokio_unstable))]
+    pub use local_runtime::HostedRuntime;
 
     mod id;
     pub use id::Id;
