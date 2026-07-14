@@ -25,6 +25,7 @@ impl Defer {
         deferred.push(waker.clone());
     }
 
+    #[cfg(not(target_os = "emscripten"))]
     pub(crate) fn is_empty(&self) -> bool {
         self.deferred.borrow().is_empty()
     }

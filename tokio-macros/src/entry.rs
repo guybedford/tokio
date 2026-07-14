@@ -521,10 +521,12 @@ fn parse_knobs(mut input: ItemFn, is_test: bool, config: FinalConfig) -> TokenSt
 
     };
 
-    // Emscripten runs the native expansion; only the `multi_thread` flavor
-    // diverges — it has no native threads there, so it's rejected with a
-    // targeted error rather than the opaque failure of the native
-    // multi-thread `block_on`.
+    // Emscripten runs the native expansion: `block_on` parks the stack on the
+    // host event loop via JSPI when the future suspends (binaries linked
+    // without `-sJSPI` panic at the first suspension instead). Only the
+    // `multi_thread` flavor diverges — it has no native threads there, so it's
+    // rejected with a targeted error (pending a `PROXY_TO_PTHREAD` runtime)
+    // rather than the opaque failure of the native multi-thread `block_on`.
     let last_block = match config.flavor {
         RuntimeFlavor::Threaded => quote! {
             #[cfg(not(target_os = "emscripten"))]

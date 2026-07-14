@@ -416,6 +416,9 @@ mod tests;
 
 pub(crate) mod context;
 
+#[cfg(all(target_os = "emscripten", feature = "rt"))]
+pub(crate) mod jspi;
+
 pub(crate) mod park;
 
 pub(crate) mod driver;
@@ -550,6 +553,8 @@ cfg_rt! {
     }
 
     cfg_fs! {
+        // Emscripten's `fs` uses the inline blocking shim, not the pool.
+        #[cfg_attr(target_os = "emscripten", allow(unused_imports))]
         pub(crate) use blocking::spawn_mandatory_blocking;
     }
 

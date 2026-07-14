@@ -235,7 +235,9 @@ mod imp;
 #[cfg(target_os = "emscripten")]
 mod imp;
 
-#[cfg(unix)]
+// Not on emscripten: its `imp` is the throwing stub above, and the unix-only
+// consumers (the signal-driven process driver) are compiled out there.
+#[cfg(all(unix, not(target_os = "emscripten")))]
 pub(crate) mod unix {
     pub(crate) use super::imp::*;
 }

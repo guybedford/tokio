@@ -2,6 +2,7 @@ use crate::loom::sync::atomic::AtomicBool;
 use crate::loom::sync::Arc;
 use crate::runtime::driver::{self, Driver};
 use crate::runtime::scheduler::{self, Defer, Inject};
+#[cfg_attr(target_os = "emscripten", allow(unused_imports))]
 use crate::runtime::task::{
     self, JoinHandle, LocalNotified, OwnedTasks, Schedule, SpawnLocation, Task,
     TaskHarnessScheduleHooks,
@@ -11,18 +12,28 @@ use crate::runtime::{
 };
 use crate::sync::notify::Notify;
 use crate::util::atomic_cell::AtomicCell;
+#[cfg_attr(target_os = "emscripten", allow(unused_imports))]
 use crate::util::{waker_ref, RngSeedGenerator, Wake, WakerRef};
+#[cfg(target_os = "emscripten")]
+use std::sync::atomic::Ordering;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
+#[cfg_attr(target_os = "emscripten", allow(unused_imports))]
 use std::future::{poll_fn, Future};
+#[cfg_attr(target_os = "emscripten", allow(unused_imports))]
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Release};
+#[cfg_attr(target_os = "emscripten", allow(unused_imports))]
 use std::task::Poll::{Pending, Ready};
 use std::task::Waker;
 use std::thread::ThreadId;
+#[cfg_attr(target_os = "emscripten", allow(unused_imports))]
 use std::time::Duration;
 use std::time::Instant;
 use std::{fmt, thread};
+
+#[cfg(target_os = "emscripten")]
+pub(crate) mod hosted_event_loop;
 
 /// Executes tasks on the current thread
 pub(crate) struct CurrentThread {
@@ -199,6 +210,7 @@ impl CurrentThread {
         (scheduler, handle)
     }
 
+    #[cfg(not(target_os = "emscripten"))]
     #[track_caller]
     pub(crate) fn block_on<F: Future>(&self, handle: &scheduler::Handle, future: F) -> F::Output {
         pin!(future);
@@ -239,6 +251,34 @@ impl CurrentThread {
                 }
             }
         })
+    }
+
+    #[cfg(target_os = "emscripten")]
+    #[track_caller]
+    pub(crate) fn block_on<F: Future>(&self, handle: &scheduler::Handle, future: F) -> F::Output {
+        pin!(future);
+
+        let output = crate::runtime::context::enter_runtime(handle, false, |_| {
+            let handle = handle.as_current_thread();
+
+            // Emscripten can't park the thread (it would block the host event loop),
+            // so `block_on` drives to a synchronous fixed point and panics if the
+            // future would suspend.
+            #[cfg(target_os = "emscripten")]
+            {
+                handle.shared.woken.store(true, Ordering::Release);
+                // SAFETY: `future` is pinned on this frame and outlives the pump.
+                return unsafe { hosted_event_loop::pump(self, handle, future) };
+            }
+        });
+        let hosted_event_loop::Outcome::Completed(output) = output else {
+            panic!(
+                "Cannot block_on a future that does not resolve synchronously: \
+                completing it would require suspending to the host event loop, \
+                which needs JSPI. Link with `-sJSPI`."
+            );
+        };
+        return output;
     }
 
     fn take_core(&self, handle: &Arc<Handle>) -> Option<CoreGuard<'_>> {
@@ -378,6 +418,7 @@ fn wake_deferred_tasks_and_free(context: &Context) {
 
 // ===== impl Context =====
 
+#[cfg(not(target_os = "emscripten"))]
 impl Context {
     /// Execute the closure with the given scheduler core stored in the
     /// thread-local context.
@@ -484,7 +525,9 @@ impl Context {
         let core = self.core.borrow_mut().take().expect("core missing");
         (core, ret)
     }
+}
 
+impl Context {
     pub(crate) fn defer(&self, waker: &Waker) {
         self.defer.defer(waker);
     }
@@ -617,6 +660,7 @@ impl Handle {
         self.shared.inject.pop()
     }
 
+    #[cfg(not(target_os = "emscripten"))]
     fn waker_ref(me: &Arc<Self>) -> WakerRef<'_> {
         // Set woken to true when enter block_on, ensure outer future
         // be polled for the first time when enter loop
@@ -806,6 +850,7 @@ struct CoreGuard<'a> {
 
 impl CoreGuard<'_> {
     #[track_caller]
+    #[cfg(not(target_os = "emscripten"))]
     fn block_on<F: Future>(self, future: F) -> F::Output {
         let ret = self.enter(|mut core, context| {
             let waker = Handle::waker_ref(&context.handle);

@@ -1,8 +1,12 @@
 #![cfg_attr(not(feature = "full"), allow(dead_code))]
 
+#[cfg(not(all(target_os = "emscripten", feature = "rt")))]
 use crate::loom::sync::atomic::AtomicUsize;
-use crate::loom::sync::{Arc, Condvar, Mutex};
+#[cfg(not(all(target_os = "emscripten", feature = "rt")))]
+use crate::loom::sync::Mutex;
+use crate::loom::sync::{Arc, Condvar};
 
+#[cfg(not(all(target_os = "emscripten", feature = "rt")))]
 use std::sync::atomic::Ordering::SeqCst;
 use std::time::Duration;
 
@@ -19,13 +23,18 @@ pub(crate) struct UnparkThread {
 
 #[derive(Debug)]
 struct Inner {
+    #[cfg(not(all(target_os = "emscripten", feature = "rt")))]
     state: AtomicUsize,
+    #[cfg(not(all(target_os = "emscripten", feature = "rt")))]
     mutex: Mutex<()>,
     condvar: Condvar,
 }
 
+#[cfg(not(all(target_os = "emscripten", feature = "rt")))]
 const EMPTY: usize = 0;
+#[cfg(not(all(target_os = "emscripten", feature = "rt")))]
 const PARKED: usize = 1;
+#[cfg(not(all(target_os = "emscripten", feature = "rt")))]
 const NOTIFIED: usize = 2;
 
 tokio_thread_local! {
@@ -44,7 +53,9 @@ impl ParkThread {
     pub(crate) fn new() -> Self {
         Self {
             inner: Arc::new(Inner {
+                #[cfg(not(all(target_os = "emscripten", feature = "rt")))]
                 state: AtomicUsize::new(EMPTY),
+                #[cfg(not(all(target_os = "emscripten", feature = "rt")))]
                 mutex: Mutex::new(()),
                 condvar: Condvar::new(),
             }),
@@ -75,7 +86,37 @@ impl ParkThread {
 
 // ==== impl Inner ====
 
+/// Panic with an actionable message when a blocking wait is attempted in a
+/// binary that cannot suspend (see `runtime::jspi::jspi_linked`).
+#[cfg(all(target_os = "emscripten", feature = "rt"))]
+fn assert_jspi_linked() {
+    assert!(
+        crate::runtime::jspi::jspi_linked(),
+        "cannot block the thread: waiting would require suspending to the \
+         host event loop, which needs JSPI. Link with `-sJSPI`."
+    );
+}
+
 impl Inner {
+    // Reachable from user code: `Handle::block_on`, `blocking_recv`,
+    // `blocking_lock`, etc. all park here when their future suspends. The
+    // stack suspends on the host loop via JSPI; the waker side routes through
+    // `unpark` below, which resumes it. Checked here (not just in `block_on`)
+    // so a non-JSPI binary gets a targeted panic instead of the engine-level
+    // abort inside `emscripten_promise_await`.
+    #[cfg(all(target_os = "emscripten", feature = "rt"))]
+    fn park(&self) {
+        assert_jspi_linked();
+        crate::runtime::jspi::park_on_host(-1.0);
+    }
+
+    #[cfg(all(target_os = "emscripten", feature = "rt"))]
+    fn park_timeout(&self, dur: Duration) {
+        assert_jspi_linked();
+        crate::runtime::jspi::park_on_host(dur.as_secs_f64() * 1000.0);
+    }
+
+    #[cfg(not(all(target_os = "emscripten", feature = "rt")))]
     fn park(&self) {
         // If we were previously notified then we consume this notification and
         // return quickly.
@@ -124,6 +165,7 @@ impl Inner {
     }
 
     /// Parks the current thread for at most `dur`.
+    #[cfg(not(all(target_os = "emscripten", feature = "rt")))]
     fn park_timeout(&self, dur: Duration) {
         // Like `park` above we have a fast path for an already-notified thread,
         // and afterwards we start coordinating for a sleep. Return quickly.
@@ -174,6 +216,7 @@ impl Inner {
         }
     }
 
+    #[cfg(not(all(target_os = "emscripten", feature = "rt")))]
     fn unpark(&self) {
         // To ensure the unparked thread will observe any writes we made before
         // this call, we must perform a release operation that `park` can
@@ -201,6 +244,14 @@ impl Inner {
         drop(self.mutex.lock());
 
         self.condvar.notify_one();
+    }
+
+    // On single-threaded Emscripten, resume the JSPI-parked stacks. Each re-checks
+    // its own condition and re-parks if this wake wasn't its. Never drives inline,
+    // so `Waker::wake` stays O(1) and can't reenter user code.
+    #[cfg(all(target_os = "emscripten", feature = "rt"))]
+    fn unpark(&self) {
+        crate::runtime::jspi::unpark_all();
     }
 
     fn shutdown(&self) {

@@ -1198,7 +1198,15 @@ jobs:
           RUSTFLAGS: ""
 
       - name: Test tokio for emscripten
-        run: cargo test -p tokio --target wasm32-unknown-emscripten --features "rt,time,sync,macros,io-util,test-util" --tests
+        run: cargo test -p tokio --target wasm32-unknown-emscripten --features "rt,time,sync,macros,fs,io-util,io-std,test-util" --tests
+        working-directory: tokio
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: node
+          RUSTFLAGS: "-C link-args=-sALLOW_MEMORY_GROWTH=1 -C link-args=-sEXIT_RUNTIME=1 -C link-args=-sJSPI -C link-args=-sSTACK_SIZE=1048576"
+
+      # JSPI is a link-time choice tokio detects at runtime: without -sJSPI, would-suspend block_on panics.
+      - name: Test tokio for emscripten (no JSPI)
+        run: cargo test -p tokio --target wasm32-unknown-emscripten --features "rt,time,sync,macros,fs,io-util,io-std,test-util" --test rt_emscripten_block_on
         working-directory: tokio
         env:
           CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: node
