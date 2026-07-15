@@ -19,6 +19,8 @@ impl IoDriverMetrics {
         self.fd_deregistered_count.add(1, Relaxed);
     }
 
+    // The emscripten reactor doesn't report ready counts yet.
+    #[cfg_attr(target_os = "emscripten", allow(dead_code))]
     pub(crate) fn incr_ready_count_by(&self, amt: u64) {
         self.ready_count.add(amt, Relaxed);
     }

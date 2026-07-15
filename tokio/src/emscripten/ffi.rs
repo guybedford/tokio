@@ -1,6 +1,6 @@
-//! FFI to emscripten's async primitives: timers, runtime keepalive, and the
-//! `emscripten/promise.h` API whose `promise_await` (suspending under
-//! `-sJSPI`) is tokio's park primitive.
+//! FFI to emscripten's async primitives: timers, runtime keepalive, the
+//! epoll readiness callback, and the `emscripten/promise.h` API whose
+//! `promise_await` (suspending under `-sJSPI`) is tokio's park primitive.
 
 /// Opaque `em_promise_t` handle.
 #[cfg(feature = "rt")]
@@ -72,6 +72,20 @@ extern "C" {
     /// primitive. Requires linking with `-sJSPI`.
     #[cfg(feature = "rt")]
     pub(crate) fn emscripten_promise_await(promise: EmPromise) -> EmSettledResult;
+
+    /// Arm a persistent readiness callback on an epoll fd (mio's reactor set,
+    /// exposed via `AsRawFd`): the runtime invokes `callback` on a fresh host
+    /// tick while the set has uncollected ready events, instead of the caller
+    /// blocking in `epoll_wait`. Pure signal — the callback collects the events
+    /// itself with a zero-timeout `epoll_wait`. A `None` callback disarms.
+    /// Returns 0 or a positive errno.
+    #[cfg(feature = "net")]
+    pub(crate) fn emscripten_epoll_set_callback(
+        epfd: std::ffi::c_int,
+        // `C-unwind` for the same reason as the timer callback above.
+        callback: Option<unsafe extern "C-unwind" fn(user_data: *mut std::ffi::c_void)>,
+        user_data: *mut std::ffi::c_void,
+    ) -> std::ffi::c_int;
 
     /// Current wasm heap size in bytes; used by tests to detect leaks.
     #[allow(dead_code)]

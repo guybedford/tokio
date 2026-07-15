@@ -458,10 +458,21 @@
 //! [JSPI]: https://github.com/WebAssembly/js-promise-integration
 //!
 //! Supported features: `rt`, `time`, `sync`, `macros`, `fs`, `io-util`,
-//! `io-std`, and `test-util` — the same surface as the other single-threaded
-//! Wasm targets. The `net` reactor (epoll-backed, over Emscripten's socket
-//! support) is planned as a follow-up; until then the `net` feature fails
-//! to build for this target (rejected by `mio`).
+//! `io-std`, `test-util`, and `net`. `net` keeps `mio` in the dependency graph
+//! and uses its edge-triggered epoll selector and `mio::net::*` socket types
+//! unchanged; only the blocking wait is replaced, driven from emscripten's
+//! `emscripten_epoll_set_callback` reactor. Built with `-sNODERAWSOCKETS` (real
+//! node sockets), [`TcpStream`](crate::net::TcpStream),
+//! [`TcpListener`](crate::net::TcpListener) (`accept`),
+//! [`UdpSocket`](crate::net::UdpSocket), and named
+//! [`UnixStream`](crate::net::UnixStream) /
+//! [`UnixListener`](crate::net::UnixListener) /
+//! [`UnixSocket`](crate::net::UnixSocket) all behave as on native (including
+//! `set_nodelay` and `poll_shutdown`), alongside
+//! [`lookup_host`](crate::net::lookup_host) and
+//! [`AsyncFd`](crate::io::unix::AsyncFd). The node backend has no
+//! `socketpair(2)` (so `UnixStream::pair`), no datagram `AF_UNIX` (so
+//! `UnixDatagram`), and no `SO_PEERCRED` (so `peer_cred`).
 //!
 //! The `process`, `signal`, and `rt-multi-thread` features are rejected at
 //! compile time: `process`/`signal` have no underlying primitives (`fork`/`exec`,
@@ -505,7 +516,6 @@
 //! `multi_thread` flavor, which has no native threads here — use
 //! `#[tokio::main(flavor = "current_thread")]` (as on any build without
 //! `rt-multi-thread`).
-//!
 //!
 //! #### Linking and running on Emscripten
 //!
@@ -562,10 +572,11 @@ compile_error!("Only features sync,macros,io-util,rt,time are supported on wasm.
 // `PROXY_TO_PTHREAD` build; `#[tokio::main]` steers to `current_thread`.
 
 // The emscripten runtime kernel is single-threaded by construction: its host
-// glue uses unsynchronized state whose soundness argument is that no second
-// thread of execution exists. A `-pthread` (atomics) build breaks that
-// premise — real threads could move a `Waker` across threads and race that
-// state — so reject it until the kernel is made thread-aware.
+// glue (the JSPI park registry, the reactor `PollState`) uses unsynchronized
+// cells under `unsafe impl Send/Sync` whose soundness argument is that no
+// second thread of execution exists. A `-pthread` (atomics) build breaks that
+// premise — real threads could move a `Waker` across threads and race those
+// cells — so reject it until the kernel is made thread-aware.
 #[cfg(all(target_os = "emscripten", feature = "rt", target_feature = "atomics"))]
 compile_error!(
     "Tokio's `wasm32-unknown-emscripten` runtime is single-threaded and does \

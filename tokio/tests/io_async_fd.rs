@@ -1,5 +1,8 @@
 #![warn(rust_2018_idioms)]
 #![cfg(all(unix, feature = "full"))]
+// On emscripten every test here needs `socketpair(2)` (ENOSYS on the node
+// backend), so all are gated out and the shared helpers go unused until it lands.
+#![cfg_attr(target_os = "emscripten", allow(dead_code, unused_imports))]
 
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::{
@@ -148,6 +151,7 @@ fn drain(mut fd: &FileDescriptor, mut amt: usize) {
     }
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[tokio::test]
 async fn initially_writable() {
     let (a, b) = socketpair();
@@ -166,6 +170,7 @@ async fn initially_writable() {
     }
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[tokio::test]
 async fn reset_readable() {
     let (a, mut b) = socketpair();
@@ -210,6 +215,7 @@ async fn reset_readable() {
     afd_a.readable().await.unwrap().clear_ready();
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[tokio::test]
 async fn reset_writable() {
     let (a, b) = socketpair();
@@ -247,6 +253,7 @@ impl<T: AsRawFd> AsRawFd for ArcFd<T> {
     }
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[tokio::test]
 async fn drop_closes() {
     let (a, mut b) = socketpair();
@@ -287,6 +294,7 @@ async fn drop_closes() {
     std::mem::drop(arc_fd); // suppress unnecessary clone clippy warning
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[tokio::test]
 async fn reregister() {
     let (a, _b) = socketpair();
@@ -296,6 +304,7 @@ async fn reregister() {
     AsyncFd::new(a).unwrap();
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[tokio::test]
 async fn guard_try_io() {
     let (a, mut b) = socketpair();
@@ -331,6 +340,7 @@ async fn guard_try_io() {
     let _ = readable.await.unwrap();
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[tokio::test]
 async fn try_io_readable() {
     let (a, mut b) = socketpair();
@@ -390,6 +400,7 @@ async fn try_io_readable() {
     }
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[tokio::test]
 async fn try_io_writable() {
     let (a, _b) = socketpair();
@@ -431,6 +442,7 @@ async fn try_io_writable() {
     }
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[tokio::test]
 async fn multiple_waiters() {
     let (a, mut b) = socketpair();
@@ -479,6 +491,7 @@ async fn multiple_waiters() {
     all_tasks.await.unwrap();
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[tokio::test]
 async fn poll_fns() {
     let (a, b) = socketpair();
@@ -572,6 +585,7 @@ fn rt() -> tokio::runtime::Runtime {
         .unwrap()
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[test]
 fn driver_shutdown_wakes_currently_pending() {
     let rt = rt();
@@ -593,6 +607,7 @@ fn driver_shutdown_wakes_currently_pending() {
     assert_err!(futures::executor::block_on(afd_a.readable()));
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[test]
 fn driver_shutdown_wakes_future_pending() {
     let rt = rt();
@@ -608,6 +623,7 @@ fn driver_shutdown_wakes_future_pending() {
     assert_err!(futures::executor::block_on(afd_a.readable()));
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[test]
 fn driver_shutdown_wakes_pending_race() {
     // TODO: make this a loom test
@@ -638,6 +654,7 @@ async fn poll_writable<T: AsRawFd>(fd: &AsyncFd<T>) -> std::io::Result<AsyncFdRe
     std::future::poll_fn(|cx| fd.poll_write_ready(cx)).await
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[test]
 fn driver_shutdown_wakes_currently_pending_polls() {
     let rt = rt();
@@ -660,6 +677,7 @@ fn driver_shutdown_wakes_currently_pending_polls() {
     assert_err!(futures::executor::block_on(writable));
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[test]
 fn driver_shutdown_wakes_poll() {
     let rt = rt();
@@ -676,6 +694,7 @@ fn driver_shutdown_wakes_poll() {
     assert_err!(futures::executor::block_on(poll_writable(&afd_a)));
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[test]
 fn driver_shutdown_then_clear_readiness() {
     let rt = rt();
@@ -693,6 +712,7 @@ fn driver_shutdown_then_clear_readiness() {
     write_ready.clear_ready();
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[test]
 fn driver_shutdown_wakes_poll_race() {
     // TODO: make this a loom test
@@ -756,6 +776,7 @@ fn send_oob_data<S: AsRawFd>(stream: &S, data: &[u8]) -> io::Result<usize> {
     }
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[tokio::test]
 async fn clear_ready_matching_clears_ready() {
     use tokio::io::{Interest, Ready};
@@ -779,6 +800,7 @@ async fn clear_ready_matching_clears_ready() {
     assert_eq!(guard.ready(), Ready::EMPTY);
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[tokio::test]
 async fn clear_ready_matching_clears_ready_mut() {
     use tokio::io::{Interest, Ready};
@@ -938,6 +960,7 @@ impl AsRawFd for InvalidSource {
     }
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[tokio::test]
 async fn try_new() {
     let original = Arc::new(InvalidSource);
@@ -948,6 +971,7 @@ async fn try_new() {
     assert!(Arc::ptr_eq(&original, &returned));
 }
 
+#[cfg(not(target_os = "emscripten"))] // socketpair(2) is unsupported on emscripten
 #[tokio::test]
 async fn try_with_interest() {
     let original = Arc::new(InvalidSource);

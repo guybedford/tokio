@@ -21,6 +21,13 @@ tokio-macros = { path = "tokio-macros" }
 tokio-stream = { path = "tokio-stream" }
 tokio-test = { path = "tokio-test" }
 tokio-util = { path = "tokio-util" }
+# emscripten support: mio's emscripten target (epoll fd exposed via `AsRawFd`
+# for the runtime to arm `emscripten_epoll_set_callback` on) plus the
+# emscripten `IovLen`/epoll fixes (socket2, libc).
+# Remove once released upstream.
+mio = { git = "https://github.com/guybedford/mio", branch = "emscripten" }
+socket2 = { git = "https://github.com/rust-lang/socket2" }
+libc = { git = "https://github.com/guybedford/libc", branch = "libc-0.2-emscripten" }
 
 [workspace.metadata.spellcheck]
 config = "spellcheck.toml"
