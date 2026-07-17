@@ -1,0 +1,19 @@
+tokio/tests/rt_emscripten_block_on.rs
+  s_ee64a4409b6ea5::t_e8bb46d15bdd2d 1-4,53,62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "135e5aac74fc60aea17615066eaff770345d66f0",
+  "prompts": {},
+  "sessions": {
+    "s_ee64a4409b6ea5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09291d537ffeeFqs9klCNb8s9F",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}
