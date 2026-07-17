@@ -1,0 +1,23 @@
+tokio/src/runtime/jspi.rs
+  s_ee64a4409b6ea5::t_7568ccd046a9ff 1-2,4,6-11,13-16,19,21-23,26-31,33
+tokio/src/runtime/park.rs
+  s_ee64a4409b6ea5::t_2b1935f1c44a2c 4,31,80,82-85,99-110,112-131,134-135,137-144,146-147,163-197,243-245,296-301,312-313,337,345-354
+tokio/tests/rt_emscripten_jspi.rs
+  s_ee64a4409b6ea5::t_828026315a2f95 1-3,13,17-18,33-36,43-45,55-56,60-63,65-67,70-119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "acfccfeda69d5e5abb38ebe7905da16b6fe623f3",
+  "prompts": {},
+  "sessions": {
+    "s_ee64a4409b6ea5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09291d537ffeeFqs9klCNb8s9F",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}
