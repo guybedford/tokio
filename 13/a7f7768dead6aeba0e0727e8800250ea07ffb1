@@ -1,0 +1,19 @@
+.github/workflows/ci.yml
+  s_ee64a4409b6ea5::t_d22c0f5fa40f66 1201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "13a7f7768dead6aeba0e0727e8800250ea07ffb1",
+  "prompts": {},
+  "sessions": {
+    "s_ee64a4409b6ea5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09291d537ffeeFqs9klCNb8s9F",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}
