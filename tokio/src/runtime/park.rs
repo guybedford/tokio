@@ -22,6 +22,11 @@ struct Inner {
     state: AtomicUsize,
     mutex: Mutex<()>,
     condvar: Condvar,
+    /// Set when this parker's (io-less) driver stack belongs to a hosted
+    /// runtime: external wakes then re-drive it. Weak: an armed callback
+    /// must not keep the runtime alive. (`OnceLock` keeps auto traits.)
+    #[cfg(all(target_os = "emscripten", tokio_unstable, feature = "rt"))]
+    hosted: std::sync::OnceLock<std::sync::Weak<crate::runtime::hosted::HostedState>>,
 }
 
 const EMPTY: usize = 0;
@@ -48,6 +53,8 @@ impl ParkThread {
                 state: AtomicUsize::new(EMPTY),
                 mutex: Mutex::new(()),
                 condvar: Condvar::new(),
+                #[cfg(all(target_os = "emscripten", tokio_unstable, feature = "rt"))]
+                hosted: std::sync::OnceLock::new(),
             }),
         }
     }
@@ -137,16 +144,19 @@ impl Inner {
             return;
         }
 
-        // On Emscripten a would-block wait with no deadline can never be
-        // woken: host timers are the only mid-park wake source (tokio has
-        // no reactor here, and every tokio-internal waker fires during the
-        // drive, before the park). Fail fast instead of deadlocking,
-        // inside or outside a JSPI root alike.
+        // Inside a promising activation an untimed wait parks on the wake
+        // slot: an external `unpark` (a host callback, a hosted runtime's
+        // drive) resolves it. Outside one, blocking is impossible — fail
+        // fast instead of deadlocking.
+        if crate::runtime::jspi::can_suspend() {
+            crate::runtime::jspi::park(self as *const Inner as usize, None);
+            let _ = self.consume_notified();
+            return;
+        }
         panic!(
             "cannot block to wait for an external wake on \
-             wasm32-unknown-emscripten: no source exists that could deliver \
-             the wake (host timers are the only mid-park wake source, and \
-             this wait has no deadline)"
+             wasm32-unknown-emscripten outside a JSPI activation: \
+             blocking would starve the host event loop"
         );
     }
 
@@ -233,7 +243,7 @@ impl Inner {
             // Includes `dur == 0`: a genuine host turn, letting timers
             // and microtasks run mid-drive (the scheduler's maintenance
             // yield).
-            crate::runtime::jspi::sleep(dur);
+            crate::runtime::jspi::park(self as *const Inner as usize, Some(dur));
             let _ = self.consume_notified();
         } else if dur == Duration::from_millis(0) {
             // Native semantics: a zero-duration park returns immediately.
@@ -291,6 +301,33 @@ impl Default for ParkThread {
 impl UnparkThread {
     pub(crate) fn unpark(&self) {
         self.inner.unpark();
+        // On Emscripten the wake must also reach the leaf, matched on the
+        // stack's mode: re-drive the attached hosted runtime (deferred, so
+        // `Waker::wake` stays O(1)), or resolve a suspended wait.
+        #[cfg(all(target_os = "emscripten", feature = "rt"))]
+        {
+            #[cfg(tokio_unstable)]
+            if let Some(hosted) = self.inner.hosted.get().and_then(std::sync::Weak::upgrade) {
+                hosted.arm_drive();
+                return;
+            }
+            crate::runtime::jspi::signal(&*self.inner as *const Inner as usize);
+        }
+    }
+
+    #[cfg(all(target_os = "emscripten", tokio_unstable, feature = "rt"))]
+    pub(crate) fn is_hosted(&self) -> bool {
+        self.inner.hosted.get().is_some()
+    }
+
+    /// Attach this parker to its hosted runtime (builder only; io-less
+    /// driver stacks), switching it to continuation mode.
+    #[cfg(all(target_os = "emscripten", tokio_unstable, feature = "rt"))]
+    pub(crate) fn set_hosted(
+        &self,
+        hosted: std::sync::Weak<crate::runtime::hosted::HostedState>,
+    ) {
+        self.inner.hosted.set(hosted).ok().expect("hosted set once");
     }
 }
 

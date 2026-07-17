@@ -1108,6 +1108,36 @@ impl Builder {
         }
     }
 
+    /// Builds an emscripten hosted event-loop runtime: a `current_thread`
+    /// [`LocalRuntime`] driven cooperatively by the host JS event loop
+    /// instead of by parking a thread, so it never blocks the host. Submit
+    /// roots with [`HostedRuntime::schedule`] and pump with
+    /// [`HostedRuntime::drive`]; after the first drive the host's own wakes
+    /// (timer ticks, socket readiness callbacks) re-drive it, so it is
+    /// self-sustaining. Any number of hosted runtimes may coexist on the
+    /// thread, each driven by its own host turns.
+    ///
+    /// Unstable: requires `--cfg tokio_unstable` while the hosted execution
+    /// model settles.
+    ///
+    /// [`HostedRuntime::schedule`]: crate::runtime::HostedRuntime::schedule
+    /// [`HostedRuntime::drive`]: crate::runtime::HostedRuntime::drive
+    #[cfg(all(target_os = "emscripten", tokio_unstable))]
+    pub fn build_hosted_event_loop_runtime(
+        &mut self,
+    ) -> io::Result<crate::runtime::HostedRuntime> {
+        use crate::runtime::hosted::HostedState;
+        use crate::runtime::HostedRuntime;
+
+        let runtime = self.build_local(LocalOptions::default())?;
+        // The runtime's host-loop identity: readiness deliveries and drive
+        // `setTimeout`s resolve to it; it owns the runtime.
+        let state = HostedState::new(runtime);
+        let (_, handle) = state.runtime().parts();
+        handle.inner.driver().set_hosted(std::sync::Arc::downgrade(&state));
+        Ok(HostedRuntime::new(state))
+    }
+
     fn get_cfg(&self) -> driver::Cfg {
         driver::Cfg {
             enable_pause_time: match self.kind {

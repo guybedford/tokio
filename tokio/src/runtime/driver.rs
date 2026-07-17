@@ -86,6 +86,25 @@ impl Handle {
         self.io.unpark();
     }
 
+    /// Whether this driver stack belongs to a hosted runtime (continuation
+    /// mode): its wait point is the host loop, so `block_on` must be
+    /// rejected, exactly like a nested runtime.
+    #[cfg(all(target_os = "emscripten", tokio_unstable, feature = "rt"))]
+    pub(crate) fn is_hosted(&self) -> bool {
+        self.io.is_hosted()
+    }
+
+    /// Attach this driver stack to its hosted runtime (builder only):
+    /// wakes and readiness deliveries then re-drive it, whichever unpark
+    /// path (reactor or parker) the stack uses.
+    #[cfg(all(target_os = "emscripten", tokio_unstable, feature = "rt"))]
+    pub(crate) fn set_hosted(
+        &self,
+        hosted: std::sync::Weak<crate::runtime::hosted::HostedState>,
+    ) {
+        self.io.set_hosted(hosted);
+    }
+
     cfg_io_driver! {
         #[track_caller]
         pub(crate) fn io(&self) -> &crate::runtime::io::Handle {
@@ -194,6 +213,25 @@ cfg_io_driver! {
             match self {
                 IoHandle::Enabled(handle) => handle.unpark(),
                 IoHandle::Disabled(handle) => handle.unpark(),
+            }
+        }
+
+        #[cfg(all(target_os = "emscripten", tokio_unstable, feature = "rt"))]
+        pub(crate) fn set_hosted(
+            &self,
+            hosted: std::sync::Weak<crate::runtime::hosted::HostedState>,
+        ) {
+            match self {
+                IoHandle::Enabled(handle) => handle.set_hosted(hosted),
+                IoHandle::Disabled(handle) => handle.set_hosted(hosted),
+            }
+        }
+
+        #[cfg(all(target_os = "emscripten", tokio_unstable, feature = "rt"))]
+        pub(crate) fn is_hosted(&self) -> bool {
+            match self {
+                IoHandle::Enabled(handle) => handle.is_hosted(),
+                IoHandle::Disabled(handle) => handle.is_hosted(),
             }
         }
 

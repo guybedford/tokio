@@ -1216,6 +1216,32 @@ jobs:
           CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: node
           RUSTFLAGS: "-C link-args=-sALLOW_MEMORY_GROWTH=1 -C link-args=-sEXIT_RUNTIME=1"
 
+      - name: Test tokio for emscripten (unstable, JSPI)
+        run: cargo test -p tokio --target wasm32-unknown-emscripten --features "rt,time,sync,macros,fs,io-util,io-std,test-util" --tests
+        working-directory: tokio
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: node
+          RUSTFLAGS: "--cfg tokio_unstable -C link-args=-sALLOW_MEMORY_GROWTH=1 -C link-args=-sEXIT_RUNTIME=1 -C link-args=-sJSPI -C link-args=-sSTACK_SIZE=1048576"
+
+      # The schedule/drive contract with no JSPI linked: `main` schedules
+      # roots onto two hosted event-loop runtimes and returns; the roots must
+      # complete purely via host drives (timer re-arms and pick-ups, including
+      # a cross-runtime wake). With no `-sJSPI` any stack suspension traps.
+      - name: Test tokio for emscripten (schedule/drive, no JSPI)
+        run: cargo test -p tokio --target wasm32-unknown-emscripten --features "rt,time,sync" --test emscripten_schedule_drive
+        working-directory: tokio
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: node
+          RUSTFLAGS: "--cfg tokio_unstable -C link-args=-sALLOW_MEMORY_GROWTH=1 -C link-args=-sEXIT_RUNTIME=1 -C link-args=-sSTACK_SIZE=1048576"
+
+      # The JS-boundary reentrancy proof: an ES module with two JSPI exports
+      # over one ambient hosted runtime; the second is called while the first
+      # is suspended and completes first (two concurrently suspended
+      # activations, non-LIFO resume, no lost wakes).
+      - name: Test tokio for emscripten (JS-boundary reentrancy)
+        run: ./build-and-run.sh
+        working-directory: tokio/tests-js/emscripten-reentrancy
+
   wasm32-unknown-emscripten-net:
     name: test tokio for wasm32-unknown-emscripten (net)
     needs: basics

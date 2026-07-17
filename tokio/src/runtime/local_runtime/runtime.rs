@@ -51,6 +51,12 @@ pub(crate) enum LocalRuntimeScheduler {
 }
 
 impl LocalRuntime {
+    /// The scheduler and handle, for the hosted event-loop glue.
+    #[cfg(all(target_os = "emscripten", tokio_unstable))]
+    pub(crate) fn parts(&self) -> (&LocalRuntimeScheduler, &Handle) {
+        (&self.scheduler, &self.handle)
+    }
+
     pub(crate) fn from_parts(
         scheduler: LocalRuntimeScheduler,
         handle: Handle,

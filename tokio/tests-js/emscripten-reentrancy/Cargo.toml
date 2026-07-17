@@ -1,0 +1,17 @@
+# The JS-boundary reentrancy proof for the emscripten hosted event-loop
+# runtime: an ES module with two JSPI exports following the
+# `#[wasm_bindgen(jspi)]` convention — locate the ambient runtime, schedule a
+# root, suspend on its completion. `run.mjs` calls the second export while the
+# first is suspended and asserts non-LIFO completion. Not a cargo test: built
+# and run by the dedicated CI step (see `run.mjs`).
+[package]
+name = "emscripten-reentrancy"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+tokio = { path = "../..", features = ["rt", "time", "sync"] }
+jspi = { path = "../../../../jspi" }
+
+[workspace]

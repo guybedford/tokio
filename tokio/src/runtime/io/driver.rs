@@ -382,7 +382,9 @@ mod emscripten {
     /// readiness callback; kept alive for the runtime's lifetime so the callback
     /// stays armed. Dropping it disarms the callback and closes the epoll fd.
     pub(crate) struct Driver {
-        state: PollState,
+        /// Shared with [`Handle`] so fixed-point drives can drain from host
+        /// context without suspending.
+        state: Arc<PollState>,
     }
 
     /// The epoll set and a reused `epoll_wait` output buffer.
@@ -407,9 +409,16 @@ mod emscripten {
         registry: mio::Registry,
         registrations: RegistrationSet,
         synced: Mutex<registration_set::Synced>,
-        /// The epoll fd carrying the readiness callback, for arming it with
-        /// this handle (the wait's identity) as `user_data`.
+        state: Arc<PollState>,
+        /// The epoll fd carrying the readiness callback, for re-arming it
+        /// with this handle as `user_data` when a hosted runtime attaches.
         epfd: std::os::fd::RawFd,
+        /// Set when this reactor belongs to a hosted (continuation-mode)
+        /// runtime: readiness then re-enters its drive instead of resolving a
+        /// suspension. Weak: the armed callback must not keep the runtime
+        /// alive.
+        #[cfg(all(tokio_unstable, feature = "rt"))]
+        hosted: std::sync::OnceLock<std::sync::Weak<crate::runtime::hosted::HostedState>>,
         pub(crate) metrics: IoDriverMetrics,
     }
 
@@ -438,11 +447,16 @@ mod emscripten {
     }
 
     /// The readiness callback: the host loop calls it on a fresh tick while
-    /// the epoll set has uncollected ready events. Pure signal — it resolves
-    /// the suspended driver turn keyed by `user_data` (the reactor's
-    /// [`Handle`], armed by the driver turn; null before the first turn,
-    /// when readiness just stays queued for the first drain), which drains
-    /// and dispatches on resume.
+    /// the epoll set has uncollected ready events. `user_data` is the
+    /// reactor's [`Handle`] — its wake identity — armed by the first driver
+    /// turn or by `set_hosted`; null before either (readiness stays queued
+    /// for the first drain). The wake is a pattern match on the reactor's
+    /// mode:
+    ///
+    /// * coroutine mode (the `block_on` path): resolve the suspended driver
+    ///   turn keyed by this handle, which drains and dispatches on resume;
+    /// * continuation mode (a hosted runtime attached): the stack is empty —
+    ///   re-enter the drive inline.
     #[cfg(feature = "rt")]
     unsafe extern "C-unwind" fn on_ready(user_data: *mut std::ffi::c_void) {
         if user_data.is_null() {
@@ -451,10 +465,15 @@ mod emscripten {
         // SAFETY: non-null `user_data` is the `Handle` this callback was
         // armed with; `Driver::drop` disarms before it can dangle.
         let handle = unsafe { &*(user_data as *const Handle) };
+        #[cfg(tokio_unstable)]
+        if let Some(hosted) = handle.hosted.get().and_then(std::sync::Weak::upgrade) {
+            hosted.drive();
+            return;
+        }
         crate::runtime::jspi::signal(handle as *const Handle as usize);
     }
 
-    /// Without `rt` nothing can be suspended; readiness stays queued in
+    /// Without `rt` nothing is suspended or hosted; readiness stays queued in
     /// the epoll set for the next drain.
     #[cfg(not(feature = "rt"))]
     unsafe extern "C-unwind" fn on_ready(_user_data: *mut std::ffi::c_void) {}
@@ -487,12 +506,12 @@ mod emscripten {
         pub(crate) fn new(nevents: usize) -> io::Result<(Driver, Handle)> {
             let poll = mio::Poll::new()?;
             let registry = poll.registry().try_clone()?;
-            let state = PollState {
+            let state = Arc::new(PollState {
                 inner: RefCell::new(PollInner {
                     poll,
                     events: mio::Events::with_capacity(nevents.max(1)),
                 }),
-            };
+            });
             let epfd = state.inner.borrow().poll.as_raw_fd();
             let rc = unsafe {
                 crate::emscripten::ffi::emscripten_epoll_set_callback(
@@ -509,7 +528,10 @@ mod emscripten {
                 registry,
                 registrations,
                 synced: Mutex::new(synced),
+                state: state.clone(),
                 epfd,
+                #[cfg(all(tokio_unstable, feature = "rt"))]
+                hosted: std::sync::OnceLock::new(),
                 metrics: IoDriverMetrics::default(),
             };
             Ok((Driver { state }, handle))
@@ -586,11 +608,48 @@ mod emscripten {
     }
 
     impl Handle {
-        /// External wakes: resolve the suspended driver turn, if any. The
-        /// resumed drive re-checks its queues; nothing else can be waiting
-        /// on this reactor.
+        /// External wakes, matched on this reactor's mode: resolve the
+        /// suspended driver turn (coroutine), or arm a 0 ms drive of the
+        /// hosted runtime (continuation) — deferred so `Waker::wake` from
+        /// host context stays O(1) and never runs tasks on the waker's stack.
         pub(crate) fn unpark(&self) {
+            #[cfg(all(tokio_unstable, feature = "rt"))]
+            if let Some(hosted) = self.hosted.get().and_then(std::sync::Weak::upgrade) {
+                hosted.arm_drive();
+                return;
+            }
             crate::runtime::jspi::signal(self as *const Handle as usize);
+        }
+
+        /// One full drain of the reactor without suspending: fetch and
+        /// dispatch all ready events. The fixed-point drive's harvest.
+        pub(crate) fn drain(&self) {
+            self.state.drain();
+        }
+
+        #[cfg(all(tokio_unstable, feature = "rt"))]
+        pub(crate) fn is_hosted(&self) -> bool {
+            self.hosted.get().is_some()
+        }
+
+        /// Attach this reactor to its hosted runtime (builder only),
+        /// switching it to continuation mode: the readiness callback is
+        /// re-armed with this handle as `user_data` so deliveries re-enter
+        /// the drive.
+        #[cfg(all(tokio_unstable, feature = "rt"))]
+        pub(crate) fn set_hosted(
+            &self,
+            hosted: std::sync::Weak<crate::runtime::hosted::HostedState>,
+        ) {
+            self.hosted.set(hosted).ok().expect("hosted set once");
+            let rc = unsafe {
+                crate::emscripten::ffi::emscripten_epoll_set_callback(
+                    self.epfd,
+                    Some(on_ready),
+                    self as *const Handle as *mut std::ffi::c_void,
+                )
+            };
+            assert_eq!(rc, 0, "re-arming the epoll readiness callback failed");
         }
 
         pub(crate) fn add_source(

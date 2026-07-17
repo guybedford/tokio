@@ -1,14 +1,14 @@
 //! Minimal JSPI primitives for `wasm32-unknown-emscripten`.
 //!
-//! Tokio's suspension model is strictly non-reentrant: `#[tokio::test]` claims
-//! suspension for its whole promising activation with a [`SuspendGuard`],
-//! and the suspending imports the runtime issues park that activation:
-//! [`sleep`] on a host timer, [`park`] on an identity-keyed wake slot
-//! resolved by [`signal`] (the reactor's readiness callback) or a timeout.
-//! With never more than one suspension in flight, no spill-stack
-//! save/restore is needed: any Wasm re-entered while the activation is
-//! parked completes before the resume, leaving the spill stack above the
-//! suspended frame untouched.
+//! Tokio's suspension model is claimed per activation: `#[tokio::test]`
+//! (and the JSPI export conventions) mark their promising activation
+//! suspendable with a [`SuspendGuard`], and [`park`] — the one suspending
+//! import the runtime issues — suspends the activation until [`signal`]
+//! resolves it or the timeout elapses. Waits are keyed by their driver
+//! stack's identity — any number of activations may be suspended
+//! concurrently (suspensions don't block fresh continuations), each
+//! resolved by its own key: the host timer, the epoll readiness callback,
+//! or an external unpark.
 
 use std::cell::Cell;
 use std::time::Duration;
@@ -48,7 +48,15 @@ pub(crate) fn can_suspend() -> bool {
 // `WebAssembly.Suspending` treatment under `-sJSPI`. The static must be
 // referenced from linked code (`anchor`) so its archive member is pulled
 // in.
-const TOKIO_JSPI_SLEEP: &str = "(ms)<::>{ return Asyncify.handleAsync(async () => { await new Promise((r) => setTimeout(r, ms)); }); }";
+
+// The suspending wait: parks the calling activation until the wake slot is
+// signalled or `ms` elapses (negative = no timer). Unit return, never
+// rejects, `Asyncify.handleAsync` for runtime keepalive across the
+// suspension.
+const TOKIO_JSPI_WAIT: &str = "(id, ms)<::>{ return Asyncify.handleAsync(() => new Promise((resolve) => { const w = globalThis.__tokioDriverWakes ??= new Map(); const done = () => { w.delete(id); if (t !== null) clearTimeout(t); resolve(); }; const t = ms >= 0 ? setTimeout(done, ms) : null; w.set(id, done); })); }";
+
+// Resolve the pending wait, if one is suspended; reports whether it did.
+const TOKIO_JSPI_SIGNAL: &str = "(id)<::>{ const wake = globalThis.__tokioDriverWakes?.get(id); if (wake) { wake(); return 1; } return 0; }";
 
 const fn em_js<const N: usize>(s: &str) -> [u8; N] {
     // NUL-terminated: N == s.len() + 1
@@ -65,25 +73,33 @@ const fn em_js<const N: usize>(s: &str) -> [u8; N] {
 #[allow(non_upper_case_globals)]
 #[no_mangle]
 #[used]
-static __em_js____asyncjs__tokio_jspi_sleep: [u8; TOKIO_JSPI_SLEEP.len() + 1] =
-    em_js(TOKIO_JSPI_SLEEP);
+static __em_js____asyncjs__tokio_jspi_wait: [u8; TOKIO_JSPI_WAIT.len() + 1] =
+    em_js(TOKIO_JSPI_WAIT);
+
+#[allow(non_upper_case_globals)]
+#[no_mangle]
+#[used]
+static __em_js__tokio_jspi_signal: [u8; TOKIO_JSPI_SIGNAL.len() + 1] = em_js(TOKIO_JSPI_SIGNAL);
 
 unsafe extern "C" {
     /// Reports the `ASYNCIFY` build mode: 0 = none, 1 = `asyncify`, 2 = JSPI.
     safe fn emscripten_has_asyncify() -> i32;
 }
 
-// Suspending import: parks on a host timeout. Unit return, never rejects,
-// `Asyncify.handleAsync` keeps the runtime alive across the suspension.
 #[link(wasm_import_module = "env")]
 unsafe extern "C-unwind" {
-    #[link_name = "__asyncjs__tokio_jspi_sleep"]
-    safe fn tokio_jspi_sleep_import(ms: f64);
+    #[link_name = "__asyncjs__tokio_jspi_wait"]
+    safe fn tokio_jspi_wait_import(id: f64, ms: f64);
+    #[link_name = "tokio_jspi_signal"]
+    safe fn tokio_jspi_signal_import(id: f64) -> i32;
 }
 
 #[inline(never)]
 fn anchor() {
-    std::hint::black_box(__em_js____asyncjs__tokio_jspi_sleep.as_ptr());
+    std::hint::black_box((
+        __em_js____asyncjs__tokio_jspi_wait.as_ptr(),
+        __em_js__tokio_jspi_signal.as_ptr(),
+    ));
 }
 
 /// Whether JSPI suspension is available: linked with `-sJSPI`.
@@ -91,66 +107,31 @@ pub fn jspi_enabled() -> bool {
     emscripten_has_asyncify() == 2
 }
 
-// The keyed wait: parks the calling activation until its slot is signalled
-// or `ms` elapses (negative = no timer). Same conventions as the sleep.
-#[cfg(feature = "net")]
-const TOKIO_JSPI_PARK: &str = "(id, ms)<::>{ return Asyncify.handleAsync(() => new Promise((resolve) => { const w = globalThis.__tokioDriverWakes ??= new Map(); const done = () => { w.delete(id); if (t !== null) clearTimeout(t); resolve(); }; const t = ms >= 0 ? setTimeout(done, ms) : null; w.set(id, done); })); }";
-
-#[cfg(feature = "net")]
-#[allow(non_upper_case_globals)]
-#[no_mangle]
-#[used]
-static __em_js____asyncjs__tokio_jspi_park: [u8; TOKIO_JSPI_PARK.len() + 1] =
-    em_js(TOKIO_JSPI_PARK);
-
-// Resolve the pending wait keyed `id`, if any; reports whether it did.
-#[cfg(feature = "net")]
-const TOKIO_JSPI_SIGNAL: &str = "(id)<::>{ const wake = globalThis.__tokioDriverWakes?.get(id); if (wake) { wake(); return 1; } return 0; }";
-
-#[cfg(feature = "net")]
-#[allow(non_upper_case_globals)]
-#[no_mangle]
-#[used]
-static __em_js__tokio_jspi_signal: [u8; TOKIO_JSPI_SIGNAL.len() + 1] = em_js(TOKIO_JSPI_SIGNAL);
-
-#[cfg(feature = "net")]
-#[link(wasm_import_module = "env")]
-unsafe extern "C-unwind" {
-    #[link_name = "__asyncjs__tokio_jspi_park"]
-    safe fn tokio_jspi_park_import(id: f64, ms: f64);
-    #[link_name = "tokio_jspi_signal"]
-    safe fn tokio_jspi_signal_import(id: f64) -> i32;
-}
-
-#[cfg(feature = "net")]
-#[inline(never)]
-fn park_anchor() {
-    std::hint::black_box((
-        __em_js____asyncjs__tokio_jspi_park.as_ptr(),
-        __em_js__tokio_jspi_signal.as_ptr(),
-    ));
-}
-
 /// Suspend the calling activation until [`signal`]​`(id)` or `timeout`
 /// (`None` = until a signal). `id` is the waiter's stable identity (the
-/// reactor handle's address): waits can only be resolved by their own key.
+/// driver-stack allocation's address): any number of activations may be
+/// suspended concurrently, each on its own key, resumed in any order.
 /// (`id` is a wasm32 address: exact in f64.)
-#[cfg(feature = "net")]
+///
+/// Across the suspension the runtime-entered flag is swapped out: the
+/// activation is off the stack, so the thread is not inside a runtime, and
+/// host callbacks may drive (hosted) runtimes meanwhile. Restored on resume,
+/// on unwind too.
 pub(crate) fn park(id: usize, timeout: Option<Duration>) {
-    park_anchor();
+    anchor();
+    struct Restore(crate::runtime::context::EnterRuntime);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            crate::runtime::context::jspi_restore_runtime_after_park(self.0);
+        }
+    }
+    let _restore = Restore(crate::runtime::context::jspi_exit_runtime_for_park());
     let ms = timeout.map_or(-1.0, |d| d.as_secs_f64() * 1000.0);
-    tokio_jspi_park_import(id as f64, ms);
+    tokio_jspi_wait_import(id as f64, ms);
 }
 
 /// Resolve the suspended [`park`] keyed `id`, if any; `true` if it woke.
-#[cfg(feature = "net")]
 pub(crate) fn signal(id: usize) -> bool {
-    park_anchor();
-    tokio_jspi_signal_import(id as f64) != 0
-}
-
-/// Suspend the owning activation for `dur` on a host timer.
-pub(crate) fn sleep(dur: Duration) {
     anchor();
-    tokio_jspi_sleep_import(dur.as_secs_f64() * 1000.0);
+    tokio_jspi_signal_import(id as f64) != 0
 }

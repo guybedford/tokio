@@ -633,8 +633,12 @@ cfg_not_rt! {
     pub(crate) mod runtime;
 }
 
-// Emscripten FFI: the epoll readiness callback behind the net driver turn.
-#[cfg(all(target_os = "emscripten", feature = "net"))]
+// Emscripten FFI: the epoll readiness callback behind the net driver turn,
+// and the timers/keepalive behind the hosted event-loop runtimes.
+#[cfg(all(
+    target_os = "emscripten",
+    any(feature = "net", all(tokio_unstable, feature = "rt"))
+))]
 pub(crate) mod emscripten;
 
 cfg_signal! {

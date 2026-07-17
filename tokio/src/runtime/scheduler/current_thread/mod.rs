@@ -12,7 +12,6 @@ use crate::runtime::{
 use crate::sync::notify::Notify;
 use crate::util::atomic_cell::AtomicCell;
 use crate::util::{waker_ref, RngSeedGenerator, Wake, WakerRef};
-
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::future::{poll_fn, Future};
@@ -23,6 +22,9 @@ use std::thread::ThreadId;
 use std::time::Duration;
 use std::time::Instant;
 use std::{fmt, thread};
+
+#[cfg(target_os = "emscripten")]
+pub(crate) mod hosted_event_loop;
 
 /// Executes tasks on the current thread
 pub(crate) struct CurrentThread {
@@ -201,6 +203,17 @@ impl CurrentThread {
 
     #[track_caller]
     pub(crate) fn block_on<F: Future>(&self, handle: &scheduler::Handle, future: F) -> F::Output {
+        // A hosted runtime's wait point is the host loop: there is no stack
+        // to hold a synchronous result across it. Reject eagerly, exactly
+        // like a nested runtime — not only when the future would park.
+        #[cfg(all(target_os = "emscripten", tokio_unstable))]
+        if handle.as_current_thread().driver.is_hosted() {
+            panic!(
+                "cannot `block_on` a hosted event-loop runtime: it is driven \
+                 by the host event loop, so no stack can wait for the result. \
+                 Use `HostedRuntime::schedule` to receive it by callback."
+            );
+        }
         pin!(future);
 
         crate::runtime::context::enter_runtime(handle, false, |blocking| {
@@ -491,7 +504,9 @@ impl Context {
         let core = self.core.borrow_mut().take().expect("core missing");
         (core, ret)
     }
+}
 
+impl Context {
     pub(crate) fn defer(&self, waker: &Waker) {
         self.defer.defer(waker);
     }

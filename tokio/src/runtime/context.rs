@@ -183,6 +183,25 @@ cfg_rt! {
         });
     }
 
+    /// Swap the runtime-entered flag out across a JSPI suspension and restore
+    /// it on resume. A suspended activation is *off* the stack — on this
+    /// single-threaded target the host only ever runs with an empty stack —
+    /// so while it is parked the thread is not inside a runtime; this makes
+    /// the thread-local state the axiom already states. Host callbacks can
+    /// then enter runtimes (e.g. drive a hosted one) while a `block_on` is
+    /// suspended. Restore runs at the resume boundary (a microtask, never
+    /// mid-drive), so it cannot clobber a live entry.
+    #[cfg(all(target_os = "emscripten", feature = "rt"))]
+    pub(crate) fn jspi_exit_runtime_for_park() -> EnterRuntime {
+        CONTEXT.with(|c| c.runtime.replace(EnterRuntime::NotEntered))
+    }
+
+    /// Restore the flag saved by [`jspi_exit_runtime_for_park`].
+    #[cfg(all(target_os = "emscripten", feature = "rt"))]
+    pub(crate) fn jspi_restore_runtime_after_park(prev: EnterRuntime) {
+        CONTEXT.with(|c| c.runtime.set(prev));
+    }
+
     pub(super) fn set_scheduler<R>(v: &scheduler::Context, f: impl FnOnce() -> R) -> R {
         CONTEXT.with(|c| c.scheduler.set(v, f))
     }

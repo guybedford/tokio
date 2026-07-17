@@ -419,6 +419,10 @@ pub(crate) mod context;
 #[cfg(all(target_os = "emscripten", feature = "rt"))]
 pub(crate) mod jspi;
 
+// Host glue for the hosted event-loop runtimes.
+#[cfg(all(target_os = "emscripten", tokio_unstable, feature = "rt"))]
+pub(crate) mod hosted;
+
 // Used by the `#[tokio::test]` expansion on Emscripten: the guard claims
 // JSPI suspension for the test's promising activation so the body's
 // `block_on` can suspend on the host loop. Not public API.
@@ -630,6 +634,9 @@ cfg_rt! {
 
     mod local_runtime;
     pub use local_runtime::{LocalRuntime, LocalOptions};
+
+    #[cfg(all(target_os = "emscripten", tokio_unstable))]
+    pub use local_runtime::HostedRuntime;
 
     mod id;
     pub use id::Id;
