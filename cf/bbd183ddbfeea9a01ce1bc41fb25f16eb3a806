@@ -1,0 +1,89 @@
+tokio/src/runtime/mod.rs
+  s_ee64a4409b6ea5::t_6a71a9c3a2ebb0 419-428,563-564
+tokio/Cargo.toml
+  s_ee64a4409b6ea5::t_2ce57f7076c6b2 107-110
+.github/workflows/ci.yml
+  s_ee64a4409b6ea5::t_d22c0f5fa40f66 1200,1205-1212
+  s_ee64a4409b6ea5::t_d71cc0bf6d142e 1201
+tokio/src/runtime/park.rs
+  s_ee64a4409b6ea5::t_f32b6852826f5c 31,80-87,99-110,112-131,134-135,137-144,146-147,163-197,243-245,296-301,312-313,337,345-354
+tokio/tests/task_emscripten.rs
+  s_ee64a4409b6ea5::t_93a33cc139b5b7 1-60
+spellcheck.dic
+  s_ee64a4409b6ea5::t_9f2578647cb51b 1
+  s_ee64a4409b6ea5::t_b98afa4e6ef2a4 165-166
+tokio/src/runtime/jspi.rs
+  s_ee64a4409b6ea5::t_ae809d6574351d 1-35
+tokio/tests/rt_emscripten_block_on.rs
+  s_ee64a4409b6ea5::t_3a18a441374ee1 1-73
+tokio/tests/rt_emscripten_jspi.rs
+  s_ee64a4409b6ea5::t_2e2df689ae55eb 1-119
+tokio/src/lib.rs
+  s_ee64a4409b6ea5::t_8175558ac6cc6b 449-465,471-472,479-481,485-486,492,538-548
+tokio-macros/src/entry.rs
+  s_ee64a4409b6ea5::t_0737915a3227c1 524-568,580-585,601-602,604,606,608
+tokio/tests/task_local.rs
+  s_ee64a4409b6ea5::t_f078a8f27b0c6f 1-11,18-19
+tokio/tests/sync_once_cell.rs
+  s_ee64a4409b6ea5::t_5b7beac9a82933 2-12
+tokio/tests/sync_panic.rs
+  s_ee64a4409b6ea5::t_c5de82afaa2094 2-12
+tokio/tests/join_handle_panic.rs
+  s_ee64a4409b6ea5::t_581128f3c5e476 2-12
+tokio/tests/rt_common_before_park.rs
+  s_ee64a4409b6ea5::t_4cf0d919a2de19 4-6
+tokio/tests/task_yield_now.rs
+  s_ee64a4409b6ea5::t_c22f8b9727045e 1-8,25
+tokio/tests/task_panic.rs
+  s_ee64a4409b6ea5::t_e5bc64ec59df3d 2-12,18-20,28
+tokio/tests/time_pause.rs
+  s_ee64a4409b6ea5::t_d3d2e1ba73c951 2-12,15,17,22,63-66,75
+tokio/tests/task_id.rs
+  s_ee64a4409b6ea5::t_6d953e4cf155ca 2-12,18,35,52,73,86-87,115-116,221,264,299
+tokio/tests/time_interval.rs
+  s_ee64a4409b6ea5::t_3772bd5c087939 2-12
+tokio/tests/task_join_set.rs
+  s_ee64a4409b6ea5::t_ebb6e6041ee0cf 2-12,446
+tokio/tests/rt_time_start_paused.rs
+  s_ee64a4409b6ea5::t_335ec7623f9819 1-11
+tokio/tests/unwindsafe.rs
+  s_ee64a4409b6ea5::t_14a7f43cefd5ed 2-12,27,36,38-39
+tokio/tests/rt_panic.rs
+  s_ee64a4409b6ea5::t_42022002e51941 2-12,18-20,62,75,88,101,114
+tokio/tests/sync_set_once.rs
+  s_ee64a4409b6ea5::t_f3812d41032564 2-12
+tokio/tests/rt_poll_callbacks.rs
+  s_ee64a4409b6ea5::t_1e10fec688b513 8
+tokio/tests/time_timeout.rs
+  s_ee64a4409b6ea5::t_2303330f7f96a0 2-12
+tokio/tests/rt_shutdown_err.rs
+  s_ee64a4409b6ea5::t_ee02ac85767fa5 2-12,16,24
+tokio/tests/test_clock.rs
+  s_ee64a4409b6ea5::t_38ad57c065edda 2-12
+tokio/tests/time_sleep.rs
+  s_ee64a4409b6ea5::t_c6060918a6db3b 2-12
+tokio/tests/rt_handle.rs
+  s_ee64a4409b6ea5::t_8dc0bb01a179c6 2-12
+tokio/tests/time_panic.rs
+  s_ee64a4409b6ea5::t_6d515dc383def2 2-12,35-42,44-50,52
+tokio/tests/task_abort.rs
+  s_ee64a4409b6ea5::t_2de7dc1461ddaa 2-14,16,18,23,26,35,58,122,166,197,221
+tokio/tests/rt_basic.rs
+  s_ee64a4409b6ea5::t_16480517aa86ec 2-12,262-265,362-365,394-397,501-504
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cfbbd183ddbfeea9a01ce1bc41fb25f16eb3a806",
+  "prompts": {},
+  "sessions": {
+    "s_ee64a4409b6ea5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09291d537ffeeFqs9klCNb8s9F",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}
