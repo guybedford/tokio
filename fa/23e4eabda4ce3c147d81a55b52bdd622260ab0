@@ -1,0 +1,67 @@
+.github/workflows/ci.yml
+  s_ee64a4409b6ea5::t_2d45ec53e57ee4 1195,1214-1255
+Cargo.toml
+  s_ee64a4409b6ea5::t_e3239bced52aa6 24-30
+tokio/src/emscripten/ffi.rs
+  s_ee64a4409b6ea5::t_c55bbe607d57c9 1-19
+tokio/src/emscripten/mod.rs
+  s_ee64a4409b6ea5::t_58270e14275c43 1-3
+tokio/src/io/async_fd.rs
+  s_ee64a4409b6ea5::t_e8dab245101986 312-315
+tokio/src/lib.rs
+  s_ee64a4409b6ea5::t_75ec0396a26550 464-481,554-556,634-637
+tokio/src/net/mod.rs
+  s_ee64a4409b6ea5::t_07111479fc70b5 34-36,41-46,63-65,69-74
+tokio/src/net/unix/mod.rs
+  s_ee64a4409b6ea5::t_6e8a611d2ff208 5-6,8,15-17,27,29,32-33
+tokio/src/net/unix/socket.rs
+  s_ee64a4409b6ea5::t_9acc413cae462f 6-9,98-105,118,242
+tokio/src/net/unix/stream.rs
+  s_ee64a4409b6ea5::t_45e0b890f45347 4,914-915,970-971
+tokio/src/net/unix/ucred.rs
+  s_ee64a4409b6ea5::t_7857d31f99e87f 46,74-75,403-404
+tokio/src/runtime/io/driver.rs
+  s_ee64a4409b6ea5::t_eee20c90de5f0b 12-15,17,19,21,24,26,28,30,32,36,49,93-99,102,115,117,120,129,258,265,339,354-636
+tokio/src/runtime/io/scheduled_io.rs
+  s_ee64a4409b6ea5::t_bc0cedb3159b33 207-208,224-227
+tokio/src/runtime/jspi.rs
+  s_ee64a4409b6ea5::t_3b024d49ce4a4f 1-4,28-86
+tokio/src/runtime/metrics/io.rs
+  s_ee64a4409b6ea5::t_25c3cf224e0194 22-23
+tokio/tests/io_async_fd.rs
+  s_ee64a4409b6ea5::t_09a597192eb21e 3-5,154,173,218,256,297,307,343,403,445,494,588,610,626,657,680,697,715,779,803,963,974
+tokio/tests/tcp_into_std.rs
+  s_ee64a4409b6ea5::t_7a71f282c041e6 3-5,12
+tokio/tests/tcp_socket.rs
+  s_ee64a4409b6ea5::t_ae14edddcf76ca 72-75,159-162,204-207,244
+tokio/tests/tcp_stream.rs
+  s_ee64a4409b6ea5::t_47e0e866f31367 20-21,25
+tokio/tests/udp.rs
+  s_ee64a4409b6ea5::t_65f19171b66561 63-66,418-421,778,784,808-809
+tokio/tests/uds_cred.rs
+  s_ee64a4409b6ea5::t_361c7e3ce41920 4
+tokio/tests/uds_datagram.rs
+  s_ee64a4409b6ea5::t_d1168fa2fe495b 4
+tokio/tests/uds_socket.rs
+  s_ee64a4409b6ea5::t_2caa8cf9e40bc8 6,15,78-80,101
+tokio/tests/uds_split.rs
+  s_ee64a4409b6ea5::t_a4d462072e1fc0 5
+tokio/tests/uds_stream.rs
+  s_ee64a4409b6ea5::t_eefaa8e387bd42 419-421
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fa23e4eabda4ce3c147d81a55b52bdd622260ab0",
+  "prompts": {},
+  "sessions": {
+    "s_ee64a4409b6ea5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09291d537ffeeFqs9klCNb8s9F",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}
