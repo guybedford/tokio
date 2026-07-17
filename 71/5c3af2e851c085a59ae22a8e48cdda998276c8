@@ -1,0 +1,25 @@
+tokio/src/net/addr.rs
+  s_ee64a4409b6ea5::t_f962c9de32f80f 178-203,205-208,242-256,308,322-323,325-341,360,366-370
+tokio/src/net/emscripten_dns.rs
+  s_ee64a4409b6ea5::t_3875808fd4c69d 1-119
+tokio/src/net/mod.rs
+  s_ee64a4409b6ea5::t_ee33d7787d7806 59-64
+tokio/tests/net_lookup_host.rs
+  s_ee64a4409b6ea5::t_67584fbc4669db 39-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "715c3af2e851c085a59ae22a8e48cdda998276c8",
+  "prompts": {},
+  "sessions": {
+    "s_ee64a4409b6ea5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09291d537ffeeFqs9klCNb8s9F",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}
