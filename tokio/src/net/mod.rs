@@ -56,6 +56,12 @@ cfg_net! {
     }
 }
 
+// Async name resolution over emscripten's `emscripten_dns_lookup_async`, used by
+// the `ToSocketAddrs` string impls in `addr` (the sync `getaddrinfo` path is
+// `EAI_AGAIN` for hostnames under `-sNODERAWSOCKETS`).
+#[cfg(all(feature = "net", target_os = "emscripten"))]
+pub(crate) mod emscripten_dns;
+
 cfg_net_unix! {
     pub mod unix;
     pub use unix::listener::UnixListener;

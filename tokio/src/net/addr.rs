@@ -166,7 +166,6 @@ cfg_net! {
         type Future = sealed::MaybeReady;
 
         fn to_socket_addrs(&self, _: sealed::Internal) -> Self::Future {
-            use crate::blocking::spawn_blocking;
             use sealed::MaybeReady;
 
             // First check if the input parses as a socket address
@@ -176,12 +175,37 @@ cfg_net! {
                 return MaybeReady(sealed::State::Ready(Some(addr)));
             }
 
-            // Run DNS lookup on the blocking pool
-            let s = self.to_owned();
+            #[cfg(target_os = "emscripten")]
+            {
+                // Split off the port and resolve the host via emscripten's async
+                // DNS (the sync `getaddrinfo` path returns `EAI_AGAIN` here).
+                if let Some((host, port)) = self
+                    .rsplit_once(':')
+                    .and_then(|(h, p)| p.parse::<u16>().ok().map(|p| (h.to_owned(), p)))
+                {
+                    return MaybeReady(sealed::State::Resolving(Box::pin(
+                        crate::net::emscripten_dns::resolve(host, port),
+                    )));
+                }
+                MaybeReady(sealed::State::Resolving(Box::pin(async {
+                    Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "invalid socket address",
+                    ))
+                })))
+            }
 
-            MaybeReady(sealed::State::Blocking(spawn_blocking(move || {
-                std::net::ToSocketAddrs::to_socket_addrs(&s)
-            })))
+            #[cfg(not(target_os = "emscripten"))]
+            {
+                use crate::blocking::spawn_blocking;
+
+                // Run DNS lookup on the blocking pool
+                let s = self.to_owned();
+
+                MaybeReady(sealed::State::Blocking(spawn_blocking(move || {
+                    std::net::ToSocketAddrs::to_socket_addrs(&s)
+                })))
+            }
         }
     }
 
@@ -194,7 +218,6 @@ cfg_net! {
         type Future = sealed::MaybeReady;
 
         fn to_socket_addrs(&self, _: sealed::Internal) -> Self::Future {
-            use crate::blocking::spawn_blocking;
             use sealed::MaybeReady;
 
             let (host, port) = *self;
@@ -216,9 +239,21 @@ cfg_net! {
 
             let host = host.to_owned();
 
-            MaybeReady(sealed::State::Blocking(spawn_blocking(move || {
-                std::net::ToSocketAddrs::to_socket_addrs(&(&host[..], port))
-            })))
+            #[cfg(target_os = "emscripten")]
+            {
+                MaybeReady(sealed::State::Resolving(Box::pin(
+                    crate::net::emscripten_dns::resolve(host, port),
+                )))
+            }
+
+            #[cfg(not(target_os = "emscripten"))]
+            {
+                use crate::blocking::spawn_blocking;
+
+                MaybeReady(sealed::State::Blocking(spawn_blocking(move || {
+                    std::net::ToSocketAddrs::to_socket_addrs(&(&host[..], port))
+                })))
+            }
         }
     }
 
@@ -270,6 +305,7 @@ pub(crate) mod sealed {
     pub struct Internal;
 
     cfg_net! {
+        #[cfg(not(target_os = "emscripten"))]
         use crate::blocking::JoinHandle;
 
         use std::option;
@@ -281,10 +317,28 @@ pub(crate) mod sealed {
         #[derive(Debug)]
         pub struct MaybeReady(pub(super) State);
 
-        #[derive(Debug)]
         pub(super) enum State {
             Ready(Option<SocketAddr>),
+            // Other targets run `getaddrinfo` on the blocking pool.
+            #[cfg(not(target_os = "emscripten"))]
             Blocking(JoinHandle<io::Result<vec::IntoIter<SocketAddr>>>),
+            // emscripten has no synchronous resolver (sync `getaddrinfo` is
+            // `EAI_AGAIN` for hostnames); resolve via the reactor-driven async
+            // DNS future instead.
+            #[cfg(target_os = "emscripten")]
+            Resolving(Pin<Box<dyn std::future::Future<Output = io::Result<vec::IntoIter<SocketAddr>>> + Send>>),
+        }
+
+        impl std::fmt::Debug for State {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    State::Ready(addr) => f.debug_tuple("Ready").field(addr).finish(),
+                    #[cfg(not(target_os = "emscripten"))]
+                    State::Blocking(_) => f.write_str("Blocking(..)"),
+                    #[cfg(target_os = "emscripten")]
+                    State::Resolving(_) => f.write_str("Resolving(..)"),
+                }
+            }
         }
 
         #[doc(hidden)]
@@ -303,10 +357,16 @@ pub(crate) mod sealed {
                         let iter = OneOrMore::One(i.take().into_iter());
                         Poll::Ready(Ok(iter))
                     }
+                    #[cfg(not(target_os = "emscripten"))]
                     State::Blocking(ref mut rx) => {
                         let res = ready!(Pin::new(rx).poll(cx))?.map(OneOrMore::More);
 
                         Poll::Ready(res)
+                    }
+                    #[cfg(target_os = "emscripten")]
+                    State::Resolving(ref mut fut) => {
+                        let res = ready!(fut.as_mut().poll(cx))?;
+                        Poll::Ready(Ok(OneOrMore::More(res)))
                     }
                 }
             }

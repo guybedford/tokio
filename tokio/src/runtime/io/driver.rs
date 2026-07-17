@@ -543,7 +543,7 @@ mod emscripten {
                 )
             };
             debug_assert_eq!(rc, 0, "arming the epoll readiness callback failed");
-            crate::runtime::jspi::wait(handle as *const Handle as usize, timeout);
+            crate::runtime::jspi::park(handle as *const Handle as usize, timeout);
             self.state.drain();
         }
 
