@@ -1,0 +1,163 @@
+.github/workflows/ci.yml
+  s_697e002b407b94::t_23b25abb009a23 1200-1201,1205-1212
+spellcheck.dic
+  s_697e002b407b94::t_87c16c2e7331af 1,13,23-25,27-115,117,138,179,200,213,216-217,223,237,246,248,257,296,300,316,335-336,339,346-351
+tokio/src/io/stdio_common.rs
+  s_697e002b407b94::t_a616215f6067e3 110
+tokio/src/process/mod.rs
+  s_697e002b407b94::t_6d9ea4adb6ce57 238-240
+tokio/src/runtime/blocking/pool.rs
+  s_697e002b407b94::t_774e5ad5879c98 131,191-192,335-336
+tokio/src/runtime/context/current.rs
+  s_697e002b407b94::t_4f96910f076236 73
+tokio/src/runtime/park.rs
+  s_697e002b407b94::t_4373199db76ed2 31,80-87,99-110,112-131,134-135,137-144,146-147,163-199,245-247,298-303,314-315,339,347-356
+tokio/tests/fs.rs
+  s_697e002b407b94::t_8cc41a973e0329 2-10,27-30
+tokio/tests/fs_canonicalize_dir.rs
+  s_697e002b407b94::t_dae19328219241 2-14
+tokio/tests/fs_copy.rs
+  s_697e002b407b94::t_125ee1707371b1 2-14
+tokio/tests/fs_dir.rs
+  s_697e002b407b94::t_a7c97fb0afcb57 2-14
+tokio/tests/fs_file.rs
+  s_697e002b407b94::t_4150440f28be46 2-14,114-117,143-146
+tokio/tests/fs_link.rs
+  s_697e002b407b94::t_ae240ba72120b1 2-14,23,79,91,110
+tokio/tests/fs_open_options.rs
+  s_697e002b407b94::t_d22d98eeac5b66 2-14
+tokio/tests/fs_remove_dir_all.rs
+  s_697e002b407b94::t_f8bb406d56fc76 2-14
+tokio/tests/fs_remove_file.rs
+  s_697e002b407b94::t_4013a0fa3a5e04 2-14
+tokio/tests/fs_rename.rs
+  s_697e002b407b94::t_284eacfbbe265b 2-14
+tokio/tests/fs_try_exists.rs
+  s_697e002b407b94::t_08c48f9f7dcad3 2-14
+tokio/tests/fs_write.rs
+  s_697e002b407b94::t_e297feb15e7249 2-14
+tokio/tests/io_async_read.rs
+  s_697e002b407b94::t_eaea688883ead6 2-10
+tokio/tests/io_buf_reader.rs
+  s_697e002b407b94::t_fce6e8a6a5c445 2-10
+tokio/tests/io_buf_writer.rs
+  s_697e002b407b94::t_366f958b20f757 2-10
+tokio/tests/io_chain.rs
+  s_697e002b407b94::t_754b714c184a97 2-10
+tokio/tests/io_copy.rs
+  s_697e002b407b94::t_ee76038b32291e 2-10
+tokio/tests/io_fill_buf.rs
+  s_697e002b407b94::t_311f2d2438866a 2-11
+tokio/tests/io_join.rs
+  s_697e002b407b94::t_39ade10aaf3907 2-10
+tokio/tests/io_lines.rs
+  s_697e002b407b94::t_a0051cd0c9646d 2-10
+tokio/tests/io_mem_stream.rs
+  s_697e002b407b94::t_8021c63b17228e 2-10
+tokio/tests/io_panic.rs
+  s_697e002b407b94::t_53b32e59ef30a7 2-5,48,138,160,183,205
+tokio/tests/io_read.rs
+  s_697e002b407b94::t_bfadae619a572a 2-10
+tokio/tests/io_read_buf.rs
+  s_697e002b407b94::t_2810e9cba23f5c 2-10
+tokio/tests/io_read_exact.rs
+  s_697e002b407b94::t_51d7b663517001 2-10
+tokio/tests/io_read_line.rs
+  s_697e002b407b94::t_ea47ccbb049efe 2-10
+tokio/tests/io_read_to_end.rs
+  s_697e002b407b94::t_e544aff20f5aff 2-10
+tokio/tests/io_read_to_string.rs
+  s_697e002b407b94::t_7a2c792d5924a9 2-10
+tokio/tests/io_read_until.rs
+  s_697e002b407b94::t_d2bb87e62cf2cb 2-10
+tokio/tests/io_repeat.rs
+  s_697e002b407b94::t_de4cc3eba489d7 2-10
+tokio/tests/io_sink.rs
+  s_697e002b407b94::t_f613e84e9f7b37 2-10
+tokio/tests/io_split.rs
+  s_697e002b407b94::t_c573724f2043c9 2-10
+tokio/tests/io_take.rs
+  s_697e002b407b94::t_55428b53a72b43 2-10
+tokio/tests/io_util_empty.rs
+  s_697e002b407b94::t_f3bb9e01c26814 1-9
+tokio/tests/io_write.rs
+  s_697e002b407b94::t_98a1e2f6bd32ee 2-10
+tokio/tests/io_write_all.rs
+  s_697e002b407b94::t_425a68f4b61f63 2-10
+tokio/tests/io_write_all_buf.rs
+  s_697e002b407b94::t_2f900e8676f1db 2-10
+tokio/tests/io_write_buf.rs
+  s_697e002b407b94::t_1692699069b468 2-10
+tokio/tests/io_write_int.rs
+  s_697e002b407b94::t_1df6248aaf86db 2-10
+tokio/tests/join_handle_panic.rs
+  s_697e002b407b94::t_9b95e7be842720 2-5
+tokio/tests/rt_basic.rs
+  s_697e002b407b94::t_9a736836f1b181 2-5,255-258,355-358,387-390,494-497
+tokio/tests/rt_common_before_park.rs
+  s_697e002b407b94::t_1a5eb4fae46f9c 4-6
+tokio/tests/rt_handle.rs
+  s_697e002b407b94::t_83b3cf0fd45b60 2-5
+tokio/tests/rt_panic.rs
+  s_697e002b407b94::t_ae9a08dfe3cb62 2-5,11-13,55,68,81,94,107
+tokio/tests/rt_poll_callbacks.rs
+  s_697e002b407b94::t_40d18d36e1e55b 8
+tokio/tests/rt_shutdown_err.rs
+  s_697e002b407b94::t_a1311988ef3dee 2,6,14
+tokio/tests/rt_spawn_blocking.rs
+  s_697e002b407b94::t_bdc8bdefdb2275 3-4
+tokio/tests/rt_threaded.rs
+  s_697e002b407b94::t_b0e71e3b40398f 703,711,731
+tokio/tests/rt_time_start_paused.rs
+  s_697e002b407b94::t_ad95e359299b14 1-9
+tokio/tests/sync_once_cell.rs
+  s_697e002b407b94::t_5c1a7d203f4ca0 2-10
+tokio/tests/sync_panic.rs
+  s_697e002b407b94::t_30610fe9eb86b6 2-5
+tokio/tests/sync_set_once.rs
+  s_697e002b407b94::t_218efcda0efdae 2-10
+tokio/tests/task_abort.rs
+  s_697e002b407b94::t_3060f69656f46f 2-5,7,9,11,16,19,28,51,115,159,190,214
+tokio/tests/task_id.rs
+  s_697e002b407b94::t_44de4e4b3dd52a 2-10,16,33,50,71,84-85,113-114,219,262,297
+tokio/tests/task_join_set.rs
+  s_697e002b407b94::t_abe437cb015dbf 2-11,445
+tokio/tests/task_local.rs
+  s_697e002b407b94::t_f32bd3b744b76c 1-4,11-12
+tokio/tests/task_panic.rs
+  s_697e002b407b94::t_fab85b67fd8a10 2-5,11-13,21
+tokio/tests/task_yield_now.rs
+  s_697e002b407b94::t_32dd70c8715ec5 1-8,25
+tokio/tests/tcp_shutdown.rs
+  s_697e002b407b94::t_750ac2d3269cbc 2
+tokio/tests/test_clock.rs
+  s_697e002b407b94::t_e4f15a44aec48c 2-10
+tokio/tests/time_interval.rs
+  s_697e002b407b94::t_87a441381ed115 2-10
+tokio/tests/time_panic.rs
+  s_697e002b407b94::t_c0b6f876469ed3 2-5,28-35,37-43,45
+tokio/tests/time_pause.rs
+  s_697e002b407b94::t_19ad2cb5030513 2-10,13,15,20,61-64,73
+tokio/tests/time_sleep.rs
+  s_697e002b407b94::t_4fdd2e784f1956 2-10
+tokio/tests/time_timeout.rs
+  s_697e002b407b94::t_7a3dc271184ef9 2-10
+tokio/tests/unwindsafe.rs
+  s_697e002b407b94::t_f3e7e897483cd1 2-5,20,29,31-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "48fd4167aedfe1bd3cb6de22d904ceddb7e37c84",
+  "prompts": {},
+  "sessions": {
+    "s_697e002b407b94": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_098f291f9ffeqHI6EaQIprT6X7",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}
