@@ -1197,7 +1197,7 @@ jobs:
           tool: cargo-hack
 
       - name: Check tokio feature matrix for emscripten
-        run: cargo hack check -p tokio --each-feature --exclude-features full,net,process,signal,rt-multi-thread,io-uring,taskdump,schedule-latency --target wasm32-unknown-emscripten
+        run: cargo hack check -p tokio --each-feature --exclude-features full,process,signal,rt-multi-thread,io-uring,taskdump,schedule-latency --target wasm32-unknown-emscripten
         working-directory: tokio
         env:
           RUSTFLAGS: ""
@@ -1215,6 +1215,48 @@ jobs:
         env:
           CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: node
           RUSTFLAGS: "-C link-args=-sALLOW_MEMORY_GROWTH=1 -C link-args=-sEXIT_RUNTIME=1"
+
+  wasm32-unknown-emscripten-net:
+    name: test tokio for wasm32-unknown-emscripten (net)
+    needs: basics
+    runs-on: ubuntu-latest
+    # TEMPORARY: nightly (std OwnedFd::try_clone emscripten carve-out) and the
+    # guybedford/emscripten `cf` fork (epoll callback, fd_wait blocking ops,
+    # AF_UNIX pathname sockets) until those land in releases; mio/libc/socket2
+    # come from the git patches in the workspace Cargo.toml meanwhile.
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-unknown-emscripten
+
+      - name: Install Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 'latest'
+
+      - name: Overlay emscripten fork
+        run: |
+          git clone --depth 1 --branch cf https://github.com/guybedford/emscripten.git em-fork
+          python3 em-fork/bootstrap.py
+          rm -rf "$EMSDK/upstream/emscripten"
+          ln -s "$(pwd)/em-fork" "$EMSDK/upstream/emscripten"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Real node sockets under -sNODERAWSOCKETS (and -sNODERAWFS for named
+      # unix-domain socket files); tests spin up their own loopback listeners.
+      - name: Test tokio for emscripten (net)
+        run: cargo test -p tokio --target wasm32-unknown-emscripten --features "rt,time,sync,macros,fs,io-util,io-std,test-util,net" --tests
+        working-directory: tokio
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: node
+          RUSTFLAGS: "-C link-args=-sALLOW_MEMORY_GROWTH=1 -C link-args=-sEXIT_RUNTIME=1 -C link-args=-sJSPI -C link-args=-sSTACK_SIZE=1048576 -C link-args=-sNODERAWSOCKETS -C link-args=-sNODERAWFS"
 
   check-external-types:
     name: check-external-types (${{ matrix.os }})

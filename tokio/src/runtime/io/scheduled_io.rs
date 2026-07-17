@@ -204,8 +204,8 @@ impl ScheduledIo {
     ///   specific tick.
     /// - `f`: a closure returning a new readiness value given the previous
     ///   readiness.
-    pub(super) fn set_readiness(&self, tick_op: Tick, f: impl Fn(Ready) -> Ready) {
-        let _ = self.readiness.fetch_update(AcqRel, Acquire, |curr| {
+    pub(super) fn set_readiness(&self, tick_op: Tick, f: impl Fn(Ready) -> Ready) -> Ready {
+        let prev = self.readiness.fetch_update(AcqRel, Acquire, |curr| {
             // If the io driver is shut down, then you are only allowed to clear readiness.
             debug_assert!(SHUTDOWN.unpack(curr) == 0 || matches!(tick_op, Tick::Clear(_)));
 
@@ -221,6 +221,10 @@ impl ScheduledIo {
             let ready = Ready::from_usize(READINESS.unpack(curr));
             Some(TICK.pack(new_tick, f(ready).as_usize()))
         });
+        let prev = match prev {
+            Ok(prev) | Err(prev) => prev,
+        };
+        Ready::from_usize(READINESS.unpack(prev))
     }
 
     /// Notifies all pending waiters that have registered interest in `ready`.

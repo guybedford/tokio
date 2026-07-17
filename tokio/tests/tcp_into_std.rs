@@ -1,11 +1,15 @@
 #![warn(rust_2018_idioms)]
 // WASIp1 doesn't support bind
+// emscripten: a `std::net` blocking read on a raw node socket returns
+// `EAGAIN` — node only delivers data on host turns, which the sync path
+// cannot take.
 #![cfg(all(
     feature = "net",
     feature = "macros",
     feature = "rt",
     feature = "io-util",
     not(all(target_os = "wasi", target_env = "p1")),
+    not(target_os = "emscripten"),
 ))]
 
 use std::io::Read;

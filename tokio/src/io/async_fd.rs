@@ -309,7 +309,10 @@ impl<T: AsRawFd> AsyncFd<T> {
     ) -> Result<Self, AsyncFdTryNewError<T>> {
         let fd = inner.as_raw_fd();
 
-        match Registration::new_with_interest_and_handle(&mut SourceFd(&fd), interest, handle) {
+        let registration =
+            Registration::new_with_interest_and_handle(&mut SourceFd(&fd), interest, handle);
+
+        match registration {
             Ok(registration) => Ok(AsyncFd {
                 registration,
                 inner: Some(inner),

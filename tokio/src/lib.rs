@@ -463,9 +463,24 @@
 //!
 //! [JSPI]: https://github.com/WebAssembly/js-promise-integration
 //!
-//! Supported features: `rt`, `time`, `sync`, `macros`, `io-util`, and
-//! `test-util`. The `net` reactor (epoll-backed, over Emscripten's socket
-//! support) and the inline `fs`/`io-std` shims are planned as follow-ups.
+//! Supported features: `rt`, `time`, `sync`, `macros`, `io-util`,
+//! `test-util`, and `net`; the inline `fs`/`io-std` shims are planned as
+//! follow-ups. `net` keeps `mio` in the dependency graph
+//! and uses its edge-triggered epoll selector and `mio::net::*` socket types
+//! unchanged; only the blocking wait is replaced — the driver turn suspends
+//! the stack via JSPI until emscripten's epoll readiness callback (or the
+//! timer deadline) resolves it. Built with `-sNODERAWSOCKETS` (real
+//! node sockets), [`TcpStream`](crate::net::TcpStream),
+//! [`TcpListener`](crate::net::TcpListener) (`accept`),
+//! [`UdpSocket`](crate::net::UdpSocket), and named
+//! [`UnixStream`](crate::net::UnixStream) /
+//! [`UnixListener`](crate::net::UnixListener) /
+//! [`UnixSocket`](crate::net::UnixSocket) all behave as on native (including
+//! `set_nodelay` and `poll_shutdown`), alongside
+//! [`lookup_host`](crate::net::lookup_host) and
+//! [`AsyncFd`](crate::io::unix::AsyncFd). The node backend has no
+//! `socketpair(2)` (so `UnixStream::pair`), no datagram `AF_UNIX` (so
+//! `UnixDatagram`), and no `SO_PEERCRED` (so `peer_cred`).
 //!
 //! The `process`, `signal`, and `rt-multi-thread` features are rejected at
 //! compile time: `process`/`signal` have no underlying primitives (`fork`/`exec`,
@@ -537,9 +552,10 @@ compile_error!("Only features sync,macros,io-util,rt,time are supported on wasm.
 // `#[tokio::main]` steers to `current_thread`.
 
 // We currently only support the single-threaded Emscripten runtime, with
-// support for JSPI.
-// A `-pthread` (atomics) build breaks its assumptions, until the kernel is made
-// thread-aware.
+// support for JSPI. The reactor `PollState` uses unsynchronized state under
+// `unsafe impl Send/Sync`, sound only while no second thread of execution
+// exists; a `-pthread` (atomics) build breaks these assumptions, until the
+// kernel is made thread-aware.
 #[cfg(all(target_os = "emscripten", feature = "rt", target_feature = "atomics"))]
 compile_error!(
     "Tokio's `wasm32-unknown-emscripten` runtime is single-threaded and does \
@@ -616,6 +632,10 @@ cfg_rt! {
 cfg_not_rt! {
     pub(crate) mod runtime;
 }
+
+// Emscripten FFI: the epoll readiness callback behind the net driver turn.
+#[cfg(all(target_os = "emscripten", feature = "net"))]
+pub(crate) mod emscripten;
 
 cfg_signal! {
     pub mod signal;

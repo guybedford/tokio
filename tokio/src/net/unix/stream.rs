@@ -1,6 +1,7 @@
 use crate::io::{AsyncRead, AsyncWrite, Interest, PollEvented, ReadBuf, Ready};
 use crate::net::unix::split::{split, ReadHalf, WriteHalf};
 use crate::net::unix::split_owned::{split_owned, OwnedReadHalf, OwnedWriteHalf};
+#[cfg(not(target_os = "emscripten"))]
 use crate::net::unix::ucred::{self, UCred};
 use crate::net::unix::SocketAddr;
 use crate::util::check_socket_for_blocking;
@@ -910,6 +911,8 @@ impl UnixStream {
     /// This function will create a pair of interconnected Unix sockets for
     /// communicating back and forth between one another. Each socket will
     /// be associated with the default event loop's handle.
+    // Emscripten's node backend has no `socketpair(2)`.
+    #[cfg(not(target_os = "emscripten"))]
     pub fn pair() -> io::Result<(UnixStream, UnixStream)> {
         let (a, b) = mio::net::UnixStream::pair()?;
         let a = UnixStream::new(a)?;
@@ -964,6 +967,8 @@ impl UnixStream {
     }
 
     /// Returns effective credentials of the process which called `connect` or `pair`.
+    // `SO_PEERCRED` is unsupported on emscripten's node backend.
+    #[cfg(not(target_os = "emscripten"))]
     pub fn peer_cred(&self) -> io::Result<UCred> {
         ucred::get_peer_cred(self)
     }
