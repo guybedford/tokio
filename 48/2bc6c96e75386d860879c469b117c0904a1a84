@@ -1,0 +1,19 @@
+spellcheck.dic
+  s_64be6a4e4e129b::t_dd193c8e3c7579 1,21-22,73,92,113-114,116,121,125,127,134,145,156,164,181,188,191,196,229,235,245,257,290,320,347
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "482bc6c96e75386d860879c469b117c0904a1a84",
+  "prompts": {},
+  "sessions": {
+    "s_64be6a4e4e129b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_059951656ffePUfbwk8JXl6to4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}
