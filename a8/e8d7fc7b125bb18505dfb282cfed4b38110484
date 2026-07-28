@@ -1,0 +1,158 @@
+tokio/src/runtime/time/mod.rs
+  s_697e002b407b94::t_1a91cc33bd1704 290
+tokio/src/time/mod.rs
+  s_697e002b407b94::t_0cf14346e3b286 89-93
+tokio/src/util/mod.rs
+  s_697e002b407b94::t_36c8cb765ce2bb 8-9,11-15
+tokio/src/util/trace.rs
+  s_697e002b407b94::t_d8cc7352fb1c78 183-190
+.github/workflows/ci.yml
+  s_ee64a4409b6ea5::t_3c43596131b1f9 1205,1210-1212,1214-1217
+  s_ee64a4409b6ea5::t_bfa35f131f5dce 1200,1219-1254,1256-1260
+spellcheck.dic
+  s_ee64a4409b6ea5::t_e2bfb0e6bf4307 19
+tokio-macros/src/entry.rs
+  s_ee64a4409b6ea5::t_d87c592fb8cdc6 524-531,537-539,542,559,561-566,578-583,599-600,602,604,606
+tokio/src/lib.rs
+  s_ee64a4409b6ea5::t_681424b803ff9c 449-455,463-464,509,559-564
+  s_ee64a4409b6ea5::t_d395531dbdc4db 469-483,636-639
+tokio/src/runtime/jspi.rs
+  s_ee64a4409b6ea5::t_4822c0fee9eaff 12,14-15,76-77,78-83,84-88,153-154,156
+  s_ee64a4409b6ea5::t_e843f8d2a5f3bd 94-96,105-107,115-118,121-124,125-126,128,130-136,138,141,143-144,146-147,149-151
+  s_ee64a4409b6ea5::t_99e10fbd39c922 119-120,127,129,139-140,145,148
+tokio/src/runtime/mod.rs
+  s_ee64a4409b6ea5::t_41b779879865c9 419-421,425-426,428,563-564
+tokio/src/runtime/park.rs
+  s_ee64a4409b6ea5::t_953a56e2d18170 31,86-87,126-127,140-144,145-150,310-311,322-323,357-358
+tokio/tests/join_handle_panic.rs
+  s_ee64a4409b6ea5::t_c19790e83a493d 2,12
+tokio/tests/rt_basic.rs
+  s_ee64a4409b6ea5::t_e3d01594b0d0bc 2-3,12,262-265,362-365,394-397,501-504
+tokio/tests/rt_common_before_park.rs
+  s_ee64a4409b6ea5::t_e84dffa7f53cd4 4-6
+tokio/tests/rt_emscripten_block_on.rs
+  s_ee64a4409b6ea5::t_464a0b5ccc3092 1-73
+tokio/tests/rt_emscripten_jspi.rs
+  s_ee64a4409b6ea5::t_bae1fa789315a1 1-3,6-121
+tokio/tests/rt_handle.rs
+  s_ee64a4409b6ea5::t_c290cbe992db63 2-3,12
+tokio/tests/rt_panic.rs
+  s_ee64a4409b6ea5::t_f740d7545f3fc3 2-3,12,18-20,62,75,88,101,114
+tokio/tests/rt_poll_callbacks.rs
+  s_ee64a4409b6ea5::t_d344f41a85c6e8 8
+tokio/tests/rt_shutdown_err.rs
+  s_ee64a4409b6ea5::t_9243300145162e 16,24
+tokio/tests/rt_time_start_paused.rs
+  s_ee64a4409b6ea5::t_0b22c054cdb444 1-5,8-11
+tokio/tests/sync_once_cell.rs
+  s_ee64a4409b6ea5::t_c99c77a9bb38df 2-6,9-12
+tokio/tests/sync_panic.rs
+  s_ee64a4409b6ea5::t_17c4b4eb210069 2-3,12
+tokio/tests/sync_set_once.rs
+  s_ee64a4409b6ea5::t_9ab776a4cbc7d9 2-6,8,11-12
+tokio/tests/task_abort.rs
+  s_ee64a4409b6ea5::t_91941b34f0dd18 2,12,14,16,18,23,26,35,58,122,166,197,221
+tokio/tests/task_emscripten.rs
+  s_ee64a4409b6ea5::t_b2d7e98710f0df 1-60
+tokio/tests/task_id.rs
+  s_ee64a4409b6ea5::t_735826b06c10cf 2-6,8,11-12,18,35,52,73,86-87,115-116,221,264,299
+tokio/tests/task_join_set.rs
+  s_ee64a4409b6ea5::t_93c82ec0b21709 2-6,8-9,11-12,446
+tokio/tests/task_local.rs
+  s_ee64a4409b6ea5::t_3c84969f10d06e 1-2,11,18-19
+tokio/tests/task_panic.rs
+  s_ee64a4409b6ea5::t_1c548bfe29d840 2-3,12,18-20,28
+tokio/tests/task_yield_now.rs
+  s_ee64a4409b6ea5::t_93a4244331b076 1-8,25
+tokio/tests/test_clock.rs
+  s_ee64a4409b6ea5::t_14cf490ad48da4 2-6,9-12
+tokio/tests/time_interval.rs
+  s_ee64a4409b6ea5::t_e81fbe916c99fb 2-6,9-12
+tokio/tests/time_panic.rs
+  s_ee64a4409b6ea5::t_b9ef73f1673e4d 2,12,35-42,44-50,52
+tokio/tests/time_pause.rs
+  s_ee64a4409b6ea5::t_49ae1dfc28b5f0 2-6,9-12,15,17,22,63-66,75
+tokio/tests/time_sleep.rs
+  s_ee64a4409b6ea5::t_b79bdf6b464046 2-6,9-12
+tokio/tests/time_timeout.rs
+  s_ee64a4409b6ea5::t_1558d1a80dfb93 2-6,9-12
+tokio/tests/unwindsafe.rs
+  s_ee64a4409b6ea5::t_1709883edd4a2c 2,12,27,36,38-39
+tokio/tests/udp.rs
+  s_ee64a4409b6ea5::t_44a950c2851026 63-66,418-421,778,784,808-809
+tokio/src/net/unix/stream.rs
+  s_ee64a4409b6ea5::t_5e5d5ed71e76c8 4,914-915,970-971
+tokio/tests/io_async_fd.rs
+  s_ee64a4409b6ea5::t_b229147ba2be60 3-5,154,173,218,256,297,307,343,403,445,494,588,610,626,657,680,697,715,779,803,963,974
+tokio/src/runtime/io/driver.rs
+  s_ee64a4409b6ea5::t_0ed24c95f513c5 12-15,17,19,21,24,26,28,30,32,36,49,93-99,102,115,117,120,129,258,265,339,354-523,525,527-545,547-636
+  s_ee64a4409b6ea5::t_e4b71ade75876b 546
+tokio/tests/uds_socket.rs
+  s_ee64a4409b6ea5::t_873f3f90d713e9 6,15,78-80,101
+tokio/src/io/async_fd.rs
+  s_ee64a4409b6ea5::t_2f56d240ea0acd 312-315
+tokio/tests/uds_cred.rs
+  s_ee64a4409b6ea5::t_027be8efbb3d89 4
+tokio/tests/tcp_into_std.rs
+  s_ee64a4409b6ea5::t_6948126c488963 3-5,12
+tokio/src/runtime/io/scheduled_io.rs
+  s_ee64a4409b6ea5::t_6fdd786f0a4595 207-208,224-227
+tokio/tests/uds_split.rs
+  s_ee64a4409b6ea5::t_19b73b84764700 5
+tokio/tests/uds_datagram.rs
+  s_ee64a4409b6ea5::t_ef7e4a9ffeef55 4
+tokio/src/net/mod.rs
+  s_ee64a4409b6ea5::t_f2220a46da5fb3 34-36,41-46,69-71,75-80
+  s_ee64a4409b6ea5::t_ee33d7787d7806 59-64
+tokio/tests/tcp_stream.rs
+  s_ee64a4409b6ea5::t_54e837766f58e4 20-21,25
+tokio/tests/tcp_socket.rs
+  s_ee64a4409b6ea5::t_f17176f56b71a2 72-75,159-162,204-207,244
+tokio/src/net/unix/mod.rs
+  s_ee64a4409b6ea5::t_a610d5f2f5d68c 5-6,8,15-17,27,29,32-33
+tokio/src/emscripten/ffi.rs
+  s_ee64a4409b6ea5::t_6bb2a3da8875aa 1-19
+tokio/src/net/unix/ucred.rs
+  s_ee64a4409b6ea5::t_c32e48e355b911 46,74-75,403-404
+tokio/src/runtime/metrics/io.rs
+  s_ee64a4409b6ea5::t_4ff4fd8b714626 22-23
+Cargo.toml
+  s_ee64a4409b6ea5::t_0164145fa25c60 24-30
+tokio/tests/uds_stream.rs
+  s_ee64a4409b6ea5::t_6d9e91084b446d 419-421
+tokio/src/emscripten/mod.rs
+  s_ee64a4409b6ea5::t_4f83cec0092bbc 1-3
+tokio/src/net/unix/socket.rs
+  s_ee64a4409b6ea5::t_f9b40afd4c43b4 6-9,98-105,118,242
+tokio/src/net/addr.rs
+  s_ee64a4409b6ea5::t_f962c9de32f80f 178-203,205-208,242-256,308,322-323,325-341,360,366-369
+  s_ee64a4409b6ea5::t_8f4aa556eeb28c 370
+tokio/src/net/emscripten_dns.rs
+  s_ee64a4409b6ea5::t_3875808fd4c69d 1-119
+tokio/tests/net_lookup_host.rs
+  s_ee64a4409b6ea5::t_67584fbc4669db 39-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a8e8d7fc7b125bb18505dfb282cfed4b38110484",
+  "prompts": {},
+  "sessions": {
+    "s_697e002b407b94": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_098f291f9ffeqHI6EaQIprT6X7",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    },
+    "s_ee64a4409b6ea5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09291d537ffeeFqs9klCNb8s9F",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}
