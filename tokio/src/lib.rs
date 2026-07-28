@@ -453,7 +453,7 @@
 //! wake) panics with a targeted error, since the host event loop cannot run
 //! while Wasm blocks the stack.
 //!
-//! [JSPI] (-sJSPI in Emscripten) implements an exception to this behaviour:
+//! [JSPI] (-sJSPI in Emscripten) implements an exception to this behavior:
 //! a drive that would block instead suspends the whole calling stack on a
 //! host timer — the host loop keeps running and wakes it. Emscripten
 //! auto-promising-wraps `main` under `-sJSPI`, so `#[tokio::main]` and
