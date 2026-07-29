@@ -1,0 +1,37 @@
+spellcheck.dic
+  s_ee64a4409b6ea5::t_9f2578647cb51b 1,13,23-25,27-113,135,196,209,212,218,232,250,289,334-339
+tokio-macros/src/entry.rs
+  s_ee64a4409b6ea5::t_0737915a3227c1 524-568,580-585,601-602,604,606,608
+tokio/Cargo.toml
+  s_ee64a4409b6ea5::t_2ce57f7076c6b2 107-110
+tokio/src/lib.rs
+  s_ee64a4409b6ea5::t_8175558ac6cc6b 449-465,471-472,479-481,485-486,492,538-548
+tokio/src/runtime/jspi.rs
+  s_ee64a4409b6ea5::t_ae809d6574351d 1-35
+tokio/src/runtime/mod.rs
+  s_ee64a4409b6ea5::t_6a71a9c3a2ebb0 419-428,563-564
+tokio/src/runtime/park.rs
+  s_ee64a4409b6ea5::t_f32b6852826f5c 31,80-87,99-110,112-131,134-135,137-144,146-147,163-197,243-245,296-301,312-313,337,345-354
+tokio/tests/rt_emscripten_block_on.rs
+  s_ee64a4409b6ea5::t_3a18a441374ee1 1-73
+tokio/tests/rt_emscripten_jspi.rs
+  s_ee64a4409b6ea5::t_2e2df689ae55eb 1-119
+tokio/tests/task_emscripten.rs
+  s_ee64a4409b6ea5::t_93a33cc139b5b7 1-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4d989677e121520fd79c5e2eddbe64df1dbfbde6",
+  "prompts": {},
+  "sessions": {
+    "s_ee64a4409b6ea5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09291d537ffeeFqs9klCNb8s9F",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}

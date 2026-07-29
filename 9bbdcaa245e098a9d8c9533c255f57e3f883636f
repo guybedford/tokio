@@ -1,0 +1,181 @@
+.github/workflows/ci.yml
+  s_ee64a4409b6ea5::t_3c43596131b1f9 1200-1201,1205-1212
+spellcheck.dic
+  s_ee64a4409b6ea5::t_e2bfb0e6bf4307 1,13,23-25,27-113,135,196,209,212,218,232,250,289,334-339
+tokio-macros/src/entry.rs
+  s_ee64a4409b6ea5::t_d87c592fb8cdc6 524-568,580-585,601-602,604,606,608
+tokio/Cargo.toml
+  s_ee64a4409b6ea5::t_63a4a3afa696c7 107-110
+tokio/src/blocking.rs
+  s_ee64a4409b6ea5::t_0fed3aa374ecef 2,6,11,13-39
+tokio/src/io/stdio_common.rs
+  s_ee64a4409b6ea5::t_c73f90c76cfc46 110
+tokio/src/lib.rs
+  s_ee64a4409b6ea5::t_681424b803ff9c 449-461,466-467,473-477,484-486,490-491,497,543-553
+tokio/src/process/mod.rs
+  s_ee64a4409b6ea5::t_28d14268959389 238-240
+tokio/src/runtime/blocking/pool.rs
+  s_ee64a4409b6ea5::t_47aef22b3f048e 131,191-192,335-336
+tokio/src/runtime/jspi.rs
+  s_ee64a4409b6ea5::t_4822c0fee9eaff 1-35
+tokio/src/runtime/mod.rs
+  s_ee64a4409b6ea5::t_41b779879865c9 419-428,563-564
+tokio/src/runtime/park.rs
+  s_ee64a4409b6ea5::t_953a56e2d18170 31,80-87,99-110,112-131,134-135,137-144,146-147,163-197,243-245,296-301,312-313,337,345-354
+tokio/tests/fs.rs
+  s_ee64a4409b6ea5::t_22d291e094ebb6 2-10,27-30
+tokio/tests/fs_canonicalize_dir.rs
+  s_ee64a4409b6ea5::t_09cb28c0570f53 2-14
+tokio/tests/fs_copy.rs
+  s_ee64a4409b6ea5::t_5e225e6d5b0f14 2-14
+tokio/tests/fs_dir.rs
+  s_ee64a4409b6ea5::t_bb5b8aebb68dbe 2-14
+tokio/tests/fs_file.rs
+  s_ee64a4409b6ea5::t_335152253add22 2-14,114-117,143-146
+tokio/tests/fs_link.rs
+  s_ee64a4409b6ea5::t_78842ee954ac24 2-14,23,79,91,110
+tokio/tests/fs_open_options.rs
+  s_ee64a4409b6ea5::t_435d03c65330aa 2-14
+tokio/tests/fs_remove_dir_all.rs
+  s_ee64a4409b6ea5::t_664d248e02842b 2-14
+tokio/tests/fs_remove_file.rs
+  s_ee64a4409b6ea5::t_e426ef8dcc9dfa 2-14
+tokio/tests/fs_rename.rs
+  s_ee64a4409b6ea5::t_08a085680238da 2-14
+tokio/tests/fs_try_exists.rs
+  s_ee64a4409b6ea5::t_5fc1a265c866b8 2-14
+tokio/tests/fs_write.rs
+  s_ee64a4409b6ea5::t_3a2e624671e330 2-14
+tokio/tests/io_async_read.rs
+  s_ee64a4409b6ea5::t_64705e49f48141 2-10
+tokio/tests/io_buf_reader.rs
+  s_ee64a4409b6ea5::t_48d001f74cfab3 2-10
+tokio/tests/io_buf_writer.rs
+  s_ee64a4409b6ea5::t_f715b0ca3a8455 2-10
+tokio/tests/io_chain.rs
+  s_ee64a4409b6ea5::t_5d4da81e6111c8 2-10
+tokio/tests/io_copy.rs
+  s_ee64a4409b6ea5::t_acaedf869293d1 2-10
+tokio/tests/io_emscripten.rs
+  s_ee64a4409b6ea5::t_1c5ace09bd19a5 1-60
+tokio/tests/io_fill_buf.rs
+  s_ee64a4409b6ea5::t_d2be42a20b118d 2-11
+tokio/tests/io_join.rs
+  s_ee64a4409b6ea5::t_38f27f09f5c63e 2-10
+tokio/tests/io_lines.rs
+  s_ee64a4409b6ea5::t_5e6a46bbd34ca6 2-10
+tokio/tests/io_mem_stream.rs
+  s_ee64a4409b6ea5::t_4adc3ceb97da96 2-10
+tokio/tests/io_panic.rs
+  s_ee64a4409b6ea5::t_45931d51818d81 2-5,48,138,160,183,205
+tokio/tests/io_read.rs
+  s_ee64a4409b6ea5::t_5a5bc874a8f96d 2-10
+tokio/tests/io_read_buf.rs
+  s_ee64a4409b6ea5::t_0f15bbcdd38c1b 2-10
+tokio/tests/io_read_exact.rs
+  s_ee64a4409b6ea5::t_331f0c2dcd3edc 2-10
+tokio/tests/io_read_line.rs
+  s_ee64a4409b6ea5::t_aa9e9921c3db7e 2-10
+tokio/tests/io_read_to_end.rs
+  s_ee64a4409b6ea5::t_d81a2bbda13c54 2-10
+tokio/tests/io_read_to_string.rs
+  s_ee64a4409b6ea5::t_dcade5ab8adb9e 2-10
+tokio/tests/io_read_until.rs
+  s_ee64a4409b6ea5::t_9f15ffb2b8aeaf 2-10
+tokio/tests/io_repeat.rs
+  s_ee64a4409b6ea5::t_f17fd4ef8a88bf 2-10
+tokio/tests/io_sink.rs
+  s_ee64a4409b6ea5::t_5862211520205c 2-10
+tokio/tests/io_split.rs
+  s_ee64a4409b6ea5::t_373d0b4aea4cb9 2-10
+tokio/tests/io_take.rs
+  s_ee64a4409b6ea5::t_163324ea356d55 2-10
+tokio/tests/io_util_empty.rs
+  s_ee64a4409b6ea5::t_90ad9bde5542e3 1-9
+tokio/tests/io_write.rs
+  s_ee64a4409b6ea5::t_5201e19eef3fa4 2-10
+tokio/tests/io_write_all.rs
+  s_ee64a4409b6ea5::t_3e061707141492 2-10
+tokio/tests/io_write_all_buf.rs
+  s_ee64a4409b6ea5::t_5bdf0e3682727a 2-10
+tokio/tests/io_write_buf.rs
+  s_ee64a4409b6ea5::t_4061ce770cea1a 2-10
+tokio/tests/io_write_int.rs
+  s_ee64a4409b6ea5::t_d5bbf5c83df4b2 2-10
+tokio/tests/join_handle_panic.rs
+  s_ee64a4409b6ea5::t_c19790e83a493d 2-5
+tokio/tests/rt_basic.rs
+  s_ee64a4409b6ea5::t_e3d01594b0d0bc 2-5,255-258,355-358,387-390,494-497
+tokio/tests/rt_common_before_park.rs
+  s_ee64a4409b6ea5::t_e84dffa7f53cd4 4-6
+tokio/tests/rt_emscripten_block_on.rs
+  s_ee64a4409b6ea5::t_464a0b5ccc3092 1-73
+tokio/tests/rt_emscripten_jspi.rs
+  s_ee64a4409b6ea5::t_bae1fa789315a1 1-119
+tokio/tests/rt_handle.rs
+  s_ee64a4409b6ea5::t_c290cbe992db63 2-5
+tokio/tests/rt_panic.rs
+  s_ee64a4409b6ea5::t_f740d7545f3fc3 2-5,11-13,55,68,81,94,107
+tokio/tests/rt_poll_callbacks.rs
+  s_ee64a4409b6ea5::t_d344f41a85c6e8 8
+tokio/tests/rt_shutdown_err.rs
+  s_ee64a4409b6ea5::t_9243300145162e 2,6,14
+tokio/tests/rt_spawn_blocking.rs
+  s_ee64a4409b6ea5::t_b3becdfae9dd97 3-4
+tokio/tests/rt_threaded.rs
+  s_ee64a4409b6ea5::t_dc30b11d040de9 703,711,731
+tokio/tests/rt_time_start_paused.rs
+  s_ee64a4409b6ea5::t_0b22c054cdb444 1-9
+tokio/tests/sync_once_cell.rs
+  s_ee64a4409b6ea5::t_c99c77a9bb38df 2-10
+tokio/tests/sync_panic.rs
+  s_ee64a4409b6ea5::t_17c4b4eb210069 2-5
+tokio/tests/sync_set_once.rs
+  s_ee64a4409b6ea5::t_9ab776a4cbc7d9 2-10
+tokio/tests/task_abort.rs
+  s_ee64a4409b6ea5::t_91941b34f0dd18 2-5,7,9,11,16,19,28,51,115,159,190,214
+tokio/tests/task_emscripten.rs
+  s_ee64a4409b6ea5::t_b2d7e98710f0df 1-60
+tokio/tests/task_id.rs
+  s_ee64a4409b6ea5::t_735826b06c10cf 2-10,16,33,50,71,84-85,113-114,219,262,297
+tokio/tests/task_join_set.rs
+  s_ee64a4409b6ea5::t_93c82ec0b21709 2-11,445
+tokio/tests/task_local.rs
+  s_ee64a4409b6ea5::t_3c84969f10d06e 1-4,11-12
+tokio/tests/task_panic.rs
+  s_ee64a4409b6ea5::t_1c548bfe29d840 2-5,11-13,21
+tokio/tests/task_yield_now.rs
+  s_ee64a4409b6ea5::t_93a4244331b076 1-8,25
+tokio/tests/tcp_shutdown.rs
+  s_ee64a4409b6ea5::t_d03c2d2893cab9 2
+tokio/tests/test_clock.rs
+  s_ee64a4409b6ea5::t_14cf490ad48da4 2-10
+tokio/tests/time_interval.rs
+  s_ee64a4409b6ea5::t_e81fbe916c99fb 2-10
+tokio/tests/time_panic.rs
+  s_ee64a4409b6ea5::t_b9ef73f1673e4d 2-5,28-35,37-43,45
+tokio/tests/time_pause.rs
+  s_ee64a4409b6ea5::t_49ae1dfc28b5f0 2-10,13,15,20,61-64,73
+tokio/tests/time_sleep.rs
+  s_ee64a4409b6ea5::t_b79bdf6b464046 2-10
+tokio/tests/time_timeout.rs
+  s_ee64a4409b6ea5::t_1558d1a80dfb93 2-10
+tokio/tests/unwindsafe.rs
+  s_ee64a4409b6ea5::t_1709883edd4a2c 2-5,20,29,31-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9bbdcaa245e098a9d8c9533c255f57e3f883636f",
+  "prompts": {},
+  "sessions": {
+    "s_ee64a4409b6ea5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09291d537ffeeFqs9klCNb8s9F",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}

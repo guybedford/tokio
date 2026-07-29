@@ -1,0 +1,85 @@
+tokio/src/emscripten/ffi.rs
+  s_ee64a4409b6ea5::t_847f7415005792 1-3,12,20-43
+tokio/tests-js/emscripten-reentrancy/.gitignore
+  s_ee64a4409b6ea5::t_b5196c9e2a94ff 1-3
+tokio/src/runtime/jspi.rs
+  s_ee64a4409b6ea5::t_a88c1a0e33ed3e 2-6,10-13,15-22,27-30,33,37-40,43-52,54-65,67,70-75
+tokio/tests-js/emscripten-reentrancy/lib.js
+  s_ee64a4409b6ea5::t_5610fcabbbf12c 1-28
+tokio/tests-js/emscripten-reentrancy/run.mjs
+  s_ee64a4409b6ea5::t_5d8a876d865817 1-24
+tokio/src/runtime/io/driver.rs
+  s_ee64a4409b6ea5::t_acb514bbb564fb 385-387,412-421,449-473,476-480,509,514,531-534,548,550,552-553,555,598-601,603-639
+  s_ee64a4409b6ea5::t_7ddfa5223037a4 541-544,549,551,554
+  s_ee64a4409b6ea5::t_46ef9148ced795 545-547,559-560,563-564
+tokio/tests-js/emscripten-reentrancy/src/main.rs
+  s_ee64a4409b6ea5::t_3f4e6ca2091e49 1-86
+tokio/tests-js/emscripten-reentrancy/Cargo.toml
+  s_ee64a4409b6ea5::t_6145e6f442fb19 1-17
+tokio/src/runtime/park.rs
+  s_ee64a4409b6ea5::t_823c9407b0474d 25-29,56-57,106-109,111-122,187,296-322
+tokio/src/runtime/local_runtime/mod.rs
+  s_ee64a4409b6ea5::t_d551ebc4e3c128 5-9,12
+tokio/tests/support/hosted_runtime.rs
+  s_ee64a4409b6ea5::t_4eb17807086b6d 1-11
+tokio/tests/emscripten_schedule_drive.rs
+  s_ee64a4409b6ea5::t_3fd788d4ffc45d 1-129
+tokio/src/runtime/builder.rs
+  s_ee64a4409b6ea5::t_c83ca69b58a666 1112-1141
+tokio/src/runtime/context.rs
+  s_ee64a4409b6ea5::t_93ba979a9f684f 186-204
+tokio/src/lib.rs
+  s_ee64a4409b6ea5::t_21bcc940cba330 638-643
+tokio/src/runtime/local_runtime/runtime.rs
+  s_ee64a4409b6ea5::t_17e5163a753b62 54-59
+tokio/src/runtime/local_runtime/hosted_runtime.rs
+  s_ee64a4409b6ea5::t_92ac51caf9afd8 1-92
+tokio/src/runtime/driver.rs
+  s_ee64a4409b6ea5::t_261df4ece5c03d 92,95,97-107,219-237
+  s_ee64a4409b6ea5::t_86fa3940920c74 89-91,93-94,96
+tokio/src/runtime/scheduler/current_thread/mod.rs
+  s_ee64a4409b6ea5::t_5a1197a190341e 259-269
+  s_ee64a4409b6ea5::t_c1dc9bf09e0754 283-285
+tokio/src/runtime/mod.rs
+  s_ee64a4409b6ea5::t_8f20ba7eb472f4 422-425,638-640
+tokio/tests/emscripten_event_loop_contract.rs
+  s_ee64a4409b6ea5::t_02219610903420 1-127,132,134,144,147-148
+  s_ee64a4409b6ea5::t_478bb9eb1360a6 128-131,133,135-143,145-146
+tokio/src/runtime/hosted.rs
+  s_ee64a4409b6ea5::t_5bdde96da90782 1-196
+tokio/Cargo.toml
+  s_ee64a4409b6ea5::t_afcd7e6a31f3ad 206-212
+.github/workflows/ci.yml
+  s_ee64a4409b6ea5::t_44fffad4422306 1214-1231
+  s_ee64a4409b6ea5::t_9eb1cf42cad392 1232-1239
+tokio/tests-js/emscripten-reentrancy/build-and-run.sh
+  s_ee64a4409b6ea5::t_12fb2ccb147492 1-19
+tokio/src/runtime/scheduler/current_thread/hosted_event_loop.rs
+  s_697e002b407b94::t_c35da809417288 10-11
+  s_ee64a4409b6ea5::t_6f241143f7cb34 50,88-91,93,97-100
+  s_ee64a4409b6ea5::t_adca133559b932 12-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "060ac736628fc7c76aa673933f697def9420f1a5",
+  "prompts": {},
+  "sessions": {
+    "s_697e002b407b94": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_098f291f9ffeqHI6EaQIprT6X7",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    },
+    "s_ee64a4409b6ea5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09291d537ffeeFqs9klCNb8s9F",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}

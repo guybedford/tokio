@@ -1,0 +1,51 @@
+tokio/Cargo.toml
+  s_ee64a4409b6ea5::t_8a19dc5443086f 206-212
+tokio/src/emscripten/ffi.rs
+  s_ee64a4409b6ea5::t_079f9a1cad17f5 1-3,12,20-43
+tokio/src/lib.rs
+  s_ee64a4409b6ea5::t_71c0800fa881a6 638-643
+tokio/src/runtime/builder.rs
+  s_ee64a4409b6ea5::t_541087757e29d7 1112-1141
+tokio/src/runtime/context.rs
+  s_ee64a4409b6ea5::t_17a233cbde52b4 186-193
+tokio/src/runtime/driver.rs
+  s_ee64a4409b6ea5::t_05dba9c37e5b32 89-99,211-221
+tokio/src/runtime/io/driver.rs
+  s_ee64a4409b6ea5::t_e784dba8fa9cab 384-386,411-419,449-468,471-475,504,509,526-530,538,581-582,584-616
+tokio/src/runtime/local_runtime/hosted_runtime.rs
+  s_ee64a4409b6ea5::t_9c6cf4af50491c 1-101
+tokio/src/runtime/local_runtime/mod.rs
+  s_ee64a4409b6ea5::t_472fd4ff4ef4eb 5-9,12
+tokio/src/runtime/local_runtime/runtime.rs
+  s_ee64a4409b6ea5::t_2f7bd577f8c1c0 54-59
+tokio/src/runtime/mod.rs
+  s_ee64a4409b6ea5::t_bf16696ce4c795 422-425,638-640
+tokio/src/runtime/park.rs
+  s_ee64a4409b6ea5::t_9d4f8ceaf11d17 25-29,56-57,106-109,111-122,187,296-317
+tokio/src/runtime/scheduler/current_thread/hosted_event_loop.rs
+  s_ee64a4409b6ea5::t_fe5a258332c40f 49
+tokio/src/runtime/scheduler/current_thread/mod.rs
+  s_ee64a4409b6ea5::t_2a086a413e472a 272-274
+tokio/tests/emscripten_event_loop_contract.rs
+  s_ee64a4409b6ea5::t_584e21159e9b6c 1-127
+tokio/tests/emscripten_schedule_drive.rs
+  s_ee64a4409b6ea5::t_0c899e7667232e 1-129
+tokio/tests/support/hosted_runtime.rs
+  s_ee64a4409b6ea5::t_a6c67e0e23ae6b 1-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1896d17e3a3c11119cf5d5a14cb3c3a0e8aeb0ad",
+  "prompts": {},
+  "sessions": {
+    "s_ee64a4409b6ea5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09291d537ffeeFqs9klCNb8s9F",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}

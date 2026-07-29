@@ -1,0 +1,25 @@
+tokio/src/runtime/time/mod.rs
+  s_697e002b407b94::t_1a91cc33bd1704 290
+tokio/src/time/mod.rs
+  s_697e002b407b94::t_0cf14346e3b286 89-93
+tokio/src/util/mod.rs
+  s_697e002b407b94::t_36c8cb765ce2bb 8-9,11-15
+tokio/src/util/trace.rs
+  s_697e002b407b94::t_d8cc7352fb1c78 183-190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2720b133b1bd6fa6e899522e29312e7b9f47b55f",
+  "prompts": {},
+  "sessions": {
+    "s_697e002b407b94": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_098f291f9ffeqHI6EaQIprT6X7",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}
