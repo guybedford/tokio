@@ -1,0 +1,19 @@
+spellcheck.dic
+  s_285cc6af90a7dc::t_2df6581a2aa826 1,271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "71d4163734dfafca712e5d447a23fbc5c7716274",
+  "prompts": {},
+  "sessions": {
+    "s_285cc6af90a7dc": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_07d8a0b8effeeX9NQnfkp01TvK",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}
