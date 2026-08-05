@@ -1,0 +1,19 @@
+tokio/src/process/emscripten.rs
+  s_47d04d66729438::t_173697d4e7a8c1 1-127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c015fd270740907cabac2dd3a4370456f680e060",
+  "prompts": {},
+  "sessions": {
+    "s_47d04d66729438": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0596ffc8dffeC6yRIvupPpozSe",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Guy Bedford <guybedford@gmail.com>"
+    }
+  }
+}
