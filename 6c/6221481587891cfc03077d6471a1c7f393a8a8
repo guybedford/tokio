@@ -1,0 +1,21 @@
+.github/workflows/ci.yml
+  s_6db9e8f0dd3fe8::t_03046080720039 22-23,1212,1238,1241,1246
+tokio/tests/fs_link.rs
+  s_6db9e8f0dd3fe8::t_1ccee43b1d4a7c 91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6c6221481587891cfc03077d6471a1c7f393a8a8",
+  "prompts": {},
+  "sessions": {
+    "s_6db9e8f0dd3fe8": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02d0ebb19ffeeEsoMDj75lBlMy",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}
