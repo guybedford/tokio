@@ -1,0 +1,19 @@
+.github/workflows/ci.yml
+  s_6db9e8f0dd3fe8::t_03046080720039 22-23,1212,1238,1241,1246
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "570a195ee7590af9161311e657c29e742edcc733",
+  "prompts": {},
+  "sessions": {
+    "s_6db9e8f0dd3fe8": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02d0ebb19ffeeEsoMDj75lBlMy",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}
