@@ -1,0 +1,21 @@
+tokio/src/runtime/jspi.rs
+  s_6db9e8f0dd3fe8::t_596124b61f8818 72
+.github/workflows/ci.yml
+  s_6db9e8f0dd3fe8::t_f941c515ae9c77 1229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "69b3a4381883ddc4e3520d7d67e32aada1157a5b",
+  "prompts": {},
+  "sessions": {
+    "s_6db9e8f0dd3fe8": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02d0ebb19ffeeEsoMDj75lBlMy",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}
