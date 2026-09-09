@@ -1,0 +1,71 @@
+tokio/tests/udp.rs
+  s_ff70e1c14036f5::t_ec55586734a32d 63-66,410-413,754,760,784-785
+tokio/src/net/unix/stream.rs
+  s_ff70e1c14036f5::t_89ba7776865908 913-914
+tokio/tests/tcp_socket.rs
+  s_ff70e1c14036f5::t_61ac09a42e2664 72-75,159-162,204-207,244
+tokio/tests/uds_socket.rs
+  s_ff70e1c14036f5::t_206c26c1dafef2 6,15,78-80,101
+tokio/src/net/unix/ucred.rs
+  s_ff70e1c14036f5::t_598c1f71020f13 75-76,408-409
+tokio/tests/unwindsafe.rs
+  s_ff70e1c14036f5::t_97dcf49f7eda10 31
+tokio/tests/tcp_into_std.rs
+  s_ff70e1c14036f5::t_654eef4b7946a0 9
+.github/workflows/ci.yml
+  s_ff70e1c14036f5::t_350e40eea455ec 1247
+  s_ff70e1c14036f5::t_546323e4f055b8 23-25,1207-1208,1210,1230,1232-1233,1236,1240
+  s_ff70e1c14036f5::t_a7159e22265ae0 1257,1261
+tokio/tests/io_async_fd.rs
+  s_ff70e1c14036f5::t_2f5132030da791 3
+tokio/src/net/mod.rs
+  s_ff70e1c14036f5::t_732968af022fda 56-57
+tokio/src/runtime/jspi.rs
+  s_ff70e1c14036f5::t_fd9eaf9040f8c5 83-106
+tokio/tests/uds_stream.rs
+  s_ff70e1c14036f5::t_a84b2a5c26b7f8 419-421
+tokio/src/lib.rs
+  s_ff70e1c14036f5::t_bc6b66eb54fdb4 475-478,489-501,528-529
+tokio/src/runtime/io/driver.rs
+  s_ff70e1c14036f5::t_40c5eab07dcad0 196-202
+tokio/src/net/unix/mod.rs
+  s_ff70e1c14036f5::t_6d4d412e30f04c 6
+tokio/tests/tcp_stream.rs
+  s_ff70e1c14036f5::t_5f8c2fe7c9b408 20-21,25
+tokio/tests/uds_split.rs
+  s_ff70e1c14036f5::t_aa45defb05241e 5
+Cargo.toml
+  s_ff70e1c14036f5::t_63dfe6306c9acd 24-26
+tokio/src/net/unix/socket.rs
+  s_ff70e1c14036f5::t_a2681ce1cf74c3 6-9,98-105,118,242
+tokio/tests/net_lookup_host.rs
+  s_ff70e1c14036f5::t_d295419c24ca2e 39-42
+spellcheck.dic
+  s_ff70e1c14036f5::t_09a35bee28e60b 1,117
+tokio/tests/tcp_accept.rs
+  s_ff70e1c14036f5::t_339a463cef7e4e 49
+tokio/tests/tcp_connect.rs
+  s_ff70e1c14036f5::t_a2edc3d3d2b4ad 112-115,174-177
+tokio/tests/uds_datagram.rs
+  s_ff70e1c14036f5::t_70501ccea80bb9 4
+tokio/tests/uds_cred.rs
+  s_ff70e1c14036f5::t_c3ab9f617e1305 4
+deny.toml
+  s_ff70e1c14036f5::t_9b107dafce7ce6 22-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e0b93aaa2ed6490c34604e6da4a6cdb39ac01c20",
+  "prompts": {},
+  "sessions": {
+    "s_ff70e1c14036f5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f7c5c82cbffe5cc4W9mBDxVZVU",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Guy Bedford <gbedford@cloudflare.com>"
+    }
+  }
+}
