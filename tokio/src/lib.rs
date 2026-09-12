@@ -490,6 +490,11 @@
 //! panics, as does a wait with no deadline in either mode. The panic unwinds
 //! out of `block_on` and leaves the runtime usable.
 //!
+//! Built with `--cfg tokio_jspi_hooks` and linked with `-sJSPI_HOOKS` (or
+//! `-sREENTRANT_JSPI`), Emscripten's JSPI lifecycle hooks make the runtime
+//! context fiber-owned, so any suspension leaves the runtime, including one
+//! issued from task code such as a blocking name lookup.
+//!
 //! `net` uses the standard `mio` epoll reactor over Emscripten's sockets. The
 //! I/O driver's wait is a blocking `epoll_wait`, which needs either JSPI
 //! (suspending on the host event loop) or pthreads with `-sPROXY_TO_PTHREAD`

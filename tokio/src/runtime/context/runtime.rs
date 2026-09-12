@@ -43,8 +43,13 @@ where
         if c.runtime.get().is_entered() {
             None
         } else {
+            // With the fiber hooks owning the context no entry record is needed.
             #[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
-            let prev_entry = c.entry.replace(Some(Box::new(c.snapshot())));
+            let prev_entry = if super::jspi::hooks_active() {
+                None
+            } else {
+                c.entry.replace(Some(Box::new(c.snapshot())))
+            };
 
             // Set the entered flag
             c.runtime.set(EnterRuntime::Entered {
