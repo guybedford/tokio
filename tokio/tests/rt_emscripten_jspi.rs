@@ -1,6 +1,7 @@
 //! JSPI suspension contracts. With `-sJSPI` a would-block wait suspends on a
 //! host timer while the host loop delivers wakes; without it the wait panics
-//! (see `rt_emscripten_block_on`). Only the JSPI CI lane runs this file.
+//! (see `rt_emscripten_block_on`). Only the JSPI CI lanes run this file: plain
+//! JSPI, `-sJSPI_HOOKS` and `-sREENTRANT_JSPI`, probed at runtime.
 //!
 //! NOTE: This is the only Emscripten test file with real timer tests.
 
@@ -13,21 +14,220 @@
     feature = "macros"
 ))]
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::runtime::Builder;
 use tokio::sync::Notify;
+use tokio::task::LocalSet;
 use tokio::time::{sleep, Instant};
 
 fn rt() -> tokio::runtime::Runtime {
     Builder::new_current_thread().enable_all().build().unwrap()
 }
 
+// From `rt_emscripten_jspi.js`, which calls the `tokio_test_*` exports below.
+extern "C" {
+    fn tokio_test_schedule_reenter(ms: f64);
+    fn tokio_test_await_reenter() -> i32;
+    fn tokio_test_reenter_await() -> i32;
+    fn tokio_test_reenter_local_await() -> i32;
+    fn tokio_test_reenter_sync_call() -> i32;
+    fn tokio_test_call_unsuspendable() -> i32;
+    fn tokio_test_reentrant_jspi() -> i32;
+}
+
+/// Built with `--cfg tokio_jspi_hooks` and linked with `-sJSPI_HOOKS`: every
+/// suspension is a leave of the runtime.
+#[cfg(tokio_jspi_hooks)]
+fn hooks_linked() -> bool {
+    use std::ffi::c_void;
+    extern "C" {
+        fn jspi_register(
+            hook: unsafe extern "C" fn(u32, *mut c_void, i32) -> *mut c_void,
+            mask: u32,
+        ) -> i32;
+    }
+    unsafe extern "C" fn noop(_: u32, token: *mut c_void, _: i32) -> *mut c_void {
+        token
+    }
+    unsafe { jspi_register(noop, 0) == 0 }
+}
+
+#[cfg(not(tokio_jspi_hooks))]
+fn hooks_linked() -> bool {
+    false
+}
+
+/// Linked with `-sREENTRANT_JSPI`: fibers may run while a sibling is suspended.
+fn reentrant_linked() -> bool {
+    unsafe { tokio_test_reentrant_jspi() != 0 }
+}
+
+// Non-promising export whose park cannot suspend; the JS error unwinds out.
+#[no_mangle]
+pub extern "C-unwind" fn tokio_test_unsuspendable() {
+    rt().block_on(async { sleep(Duration::from_millis(5)).await });
+}
+
+// Promising export: a sibling runtime that parks while the caller is parked.
+#[no_mangle]
+pub extern "C" fn tokio_test_reenter() -> i32 {
+    rt().block_on(async {
+        let task = tokio::spawn(async {
+            sleep(Duration::from_millis(5)).await;
+            40
+        });
+        task.await.unwrap() + 2
+    })
+}
+
+// Promising export: a sibling `LocalSet` that parks.
+#[no_mangle]
+pub extern "C" fn tokio_test_reenter_local() -> i32 {
+    let rt = rt();
+    let local = LocalSet::new();
+    rt.block_on(local.run_until(async {
+        let task = tokio::task::spawn_local(async {
+            sleep(Duration::from_millis(5)).await;
+            40
+        });
+        task.await.unwrap() + 2
+    }))
+}
+
+// Non-promising export called during a task-issued suspension. Without
+// fiber-local context the runtime is still entered there.
+#[no_mangle]
+pub extern "C" fn tokio_test_reenter_sync() -> i32 {
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let res = std::panic::catch_unwind(|| rt().block_on(async { 1 }));
+    std::panic::set_hook(hook);
+    match res {
+        Ok(v) => v,
+        Err(e) if is_nested_runtime_panic(&e) => -1,
+        Err(_) => -2,
+    }
+}
+
 fn is_nested_runtime_panic(e: &Box<dyn std::any::Any + Send>) -> bool {
     e.downcast_ref::<&str>()
         .map(|m| m.contains("Cannot start a runtime from within a runtime"))
         .unwrap_or(false)
+}
+
+// Runtime B enters, parks and completes while runtime A is parked. A must
+// stay parked throughout: without `-sREENTRANT_JSPI` activations share one
+// shadow stack, so A running would overwrite B's frames.
+#[test]
+fn sibling_block_on_during_park() {
+    if !hooks_linked() {
+        return;
+    }
+    let start = Instant::now();
+    let rt = rt();
+    unsafe { tokio_test_schedule_reenter(5.0) };
+    let ran = rt.block_on(async {
+        let ran = Arc::new(AtomicBool::new(false));
+        let r = ran.clone();
+        tokio::spawn(async move {
+            sleep(Duration::from_millis(40)).await;
+            r.store(true, Ordering::SeqCst);
+        });
+        sleep(Duration::from_millis(60)).await;
+        // B's runtime is gone; this spawn only works if we are back on A's.
+        tokio::spawn(async { 7 }).await.unwrap();
+        ran.load(Ordering::SeqCst)
+    });
+    assert!(ran);
+    assert!(start.elapsed() >= Duration::from_millis(60));
+    assert_eq!(unsafe { tokio_test_await_reenter() }, 42);
+}
+
+// A runs while B is suspended, then B resumes. Needs each fiber on its own
+// shadow stack (`-sREENTRANT_JSPI`); the reentrant CI lane opts in.
+#[test]
+fn interleaved_suspended_runtimes() {
+    if !reentrant_linked() {
+        return;
+    }
+    let rt = rt();
+    unsafe { tokio_test_schedule_reenter(5.0) };
+    let sum = rt.block_on(async {
+        // B enters at 5ms and parks for 5ms; A wakes at 7ms.
+        sleep(Duration::from_millis(7)).await;
+        let a = tokio::spawn(async {
+            tokio::task::yield_now().await;
+            1
+        });
+        let b = tokio::spawn(async {
+            sleep(Duration::from_millis(2)).await;
+            2
+        });
+        let sum = a.await.unwrap() + b.await.unwrap();
+        sleep(Duration::from_millis(20)).await;
+        sum
+    });
+    assert_eq!(sum, 3);
+    assert_eq!(unsafe { tokio_test_await_reenter() }, 42);
+}
+
+// With fiber-local context any suspension leaves the runtime; without it a
+// sibling `block_on` during one is nested.
+#[tokio::test]
+async fn task_suspension_leaves_only_with_hooks() {
+    let code = tokio::spawn(async { unsafe { tokio_test_reenter_sync_call() } })
+        .await
+        .unwrap();
+    assert_eq!(code, if hooks_linked() { 1 } else { -1 });
+}
+
+// The `lookup_host` shape: a suspending import called from task code, during
+// which a sibling fiber drives its own runtime to completion. The task must
+// resume as itself, on its own runtime.
+#[tokio::test]
+async fn sibling_fiber_during_task_suspension() {
+    if !hooks_linked() {
+        return;
+    }
+    let out = tokio::spawn(async {
+        let id = tokio::task::id();
+        let b = unsafe { tokio_test_reenter_await() };
+        assert_eq!(tokio::task::id(), id);
+        // B's runtime is gone; this spawn only works if we are back on ours.
+        b + tokio::spawn(async { 1 }).await.unwrap()
+    })
+    .await
+    .unwrap();
+    assert_eq!(out, 43);
+}
+
+// A `LocalSet` entered in fiber A survives fiber B entering and parking its
+// own `LocalSet` while A is suspended from task code.
+#[test]
+fn local_set_survives_sibling_fiber() {
+    if !hooks_linked() {
+        return;
+    }
+    let rt = rt();
+    let local = LocalSet::new();
+    let out = rt.block_on(local.run_until(async {
+        let first = tokio::task::spawn_local(async { 1 });
+        let b = unsafe { tokio_test_reenter_local_await() };
+        let second = tokio::task::spawn_local(async { 2 });
+        first.await.unwrap() + second.await.unwrap() + b
+    }));
+    assert_eq!(out, 45);
+}
+
+// A park with no suspender throws `SuspendError` out of the import. The
+// unwind must restore the context so the thread is usable afterwards.
+#[test]
+fn unsuspendable_park_unwinds_cleanly() {
+    assert_eq!(unsafe { tokio_test_call_unsuspendable() }, 1);
+    assert_eq!(rt().block_on(async { 1 }), 1);
 }
 
 #[test]

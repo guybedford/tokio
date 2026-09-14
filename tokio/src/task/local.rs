@@ -284,6 +284,13 @@ pin_project! {
     }
 }
 
+#[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
+runtime::context::jspi::jspi_local!(static CURRENT: LocalData = const { LocalData {
+    ctx: RcCell::new(),
+    wake_on_schedule: Cell::new(false),
+} });
+
+#[cfg(not(all(target_os = "emscripten", not(target_feature = "atomics"))))]
 tokio_thread_local!(static CURRENT: LocalData = const { LocalData {
     ctx: RcCell::new(),
     wake_on_schedule: Cell::new(false),

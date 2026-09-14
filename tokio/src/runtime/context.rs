@@ -82,7 +82,17 @@ struct Context {
     trace: trace::Context,
 }
 
-tokio_thread_local! {
+#[cfg(all(target_os = "emscripten", not(target_feature = "atomics"), feature = "rt"))]
+macro_rules! context_local {
+    ($($tt:tt)*) => { jspi::jspi_local! { $($tt)* } };
+}
+
+#[cfg(not(all(target_os = "emscripten", not(target_feature = "atomics"), feature = "rt")))]
+macro_rules! context_local {
+    ($($tt:tt)*) => { tokio_thread_local! { $($tt)* } };
+}
+
+context_local! {
     static CONTEXT: Context = const {
         Context {
             #[cfg(feature = "rt")]

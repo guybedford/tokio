@@ -35,6 +35,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(mio_unsupported_force_poll_poll)',
   'cfg(tokio_allow_from_blocking_fd)',
   'cfg(tokio_internal_mt_counters)',
+  'cfg(tokio_jspi_hooks)',
   'cfg(tokio_no_parking_lot)',
   'cfg(tokio_no_tuning_tests)',
   'cfg(tokio_unstable)',
