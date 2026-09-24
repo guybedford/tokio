@@ -49,6 +49,14 @@ where
         if c.runtime.get().is_entered() {
             None
         } else {
+            // Registers the JSPI fiber hooks on the thread's first entry.
+            #[cfg(all(
+                tokio_unstable_jspi_hooks,
+                target_os = "emscripten",
+                not(target_feature = "atomics")
+            ))]
+            super::hooks_active();
+
             // Set the entered flag
             c.runtime.set(EnterRuntime::Entered {
                 allow_block_in_place,

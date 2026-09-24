@@ -490,6 +490,16 @@
 //! `WebAssembly.SuspendError`. That is a foreign exception rather than a Rust
 //! panic, so it can't be caught by `catch_unwind`.
 //!
+//! The runtime stays entered while it is suspended, so a `block_on` from
+//! another promising activation on the thread during the suspension panics
+//! as a nested runtime. Built with `--cfg tokio_unstable_jspi_hooks` and
+//! linked with `-sJSPI_HOOKS` (or `-sREENTRANT_JSPI`), Emscripten's JSPI
+//! lifecycle hooks make the runtime context fiber-owned: every suspension
+//! leaves the runtime, including one issued from task code such as a
+//! blocking name lookup, and a promising activation started during it is a
+//! sibling that may drive its own runtime. A plain host callback during such
+//! a suspension has no current runtime and must spawn through a `Handle`.
+//!
 //! `net` uses the standard `mio` epoll reactor over Emscripten's sockets. The
 //! I/O driver's wait is a blocking `epoll_wait`, which needs either JSPI
 //! (suspending on the host event loop) or pthreads with `-sPROXY_TO_PTHREAD`

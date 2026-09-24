@@ -3,6 +3,12 @@
 //! without it the wait panics (see `rt_emscripten_block_on`), so every test
 //! here returns early unless the build linked JSPI.
 //!
+//! The JSPI lanes link `-sJSPI_EXPORTS=tokio_test_reenter,tokio_test_reenter_local`
+//! so those exports are promising and a host call to one starts a sibling
+//! fiber. The fiber-hook tests further need `--cfg tokio_unstable_jspi_hooks`
+//! and a link with `-sJSPI_HOOKS` or `-sREENTRANT_JSPI`, probed at runtime so
+//! one binary serves every lane.
+//!
 //! NOTE: This is the only Emscripten test file with real timer tests.
 
 #![cfg(all(
@@ -19,6 +25,7 @@ use std::time::Duration;
 
 use tokio::runtime::Builder;
 use tokio::sync::Notify;
+use tokio::task::LocalSet;
 use tokio::time::{sleep, Instant};
 
 fn rt() -> tokio::runtime::Runtime {
@@ -47,6 +54,187 @@ fn is_nested_runtime_panic(e: &Box<dyn std::any::Any + Send>) -> bool {
     e.downcast_ref::<&str>()
         .map(|m| m.contains("Cannot start a runtime from within a runtime"))
         .unwrap_or(false)
+}
+
+/// Built with `--cfg tokio_unstable_jspi_hooks` and linked with
+/// `-sJSPI_HOOKS`: every suspension is a leave of the runtime.
+#[cfg(tokio_unstable_jspi_hooks)]
+fn hooks_linked() -> bool {
+    use std::ffi::c_void;
+    extern "C" {
+        fn jspi_register(
+            hook: unsafe extern "C" fn(u32, *mut c_void, i32) -> *mut c_void,
+            mask: u32,
+        ) -> i32;
+    }
+    unsafe extern "C" fn noop(_: u32, token: *mut c_void, _: i32) -> *mut c_void {
+        token
+    }
+    // SAFETY: registers a hook for no events.
+    unsafe { jspi_register(noop, 0) == 0 }
+}
+
+#[cfg(not(tokio_unstable_jspi_hooks))]
+fn hooks_linked() -> bool {
+    false
+}
+
+extern "C" {
+    fn emscripten_run_script(script: *const std::ffi::c_char);
+    fn emscripten_run_script_int(script: *const std::ffi::c_char) -> i32;
+    fn emscripten_promise_create() -> *mut std::ffi::c_void;
+    fn emscripten_promise_destroy(promise: *mut std::ffi::c_void);
+}
+
+extern "C-unwind" {
+    fn emscripten_promise_await_unchecked(promise: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+}
+
+fn run_js(script: &str) {
+    let script = std::ffi::CString::new(script).unwrap();
+    // SAFETY: a NUL-terminated script evaluated on the host.
+    unsafe { emscripten_run_script(script.as_ptr()) }
+}
+
+/// Linked with `-sREENTRANT_JSPI`, where fibers have their own shadow stacks
+/// and may run while a sibling is suspended: the reentrant lane sets
+/// `TOKIO_REENTRANT_JSPI`.
+fn reentrant_linked() -> bool {
+    let script = std::ffi::CString::new(
+        "typeof process != 'undefined' && process.env.TOKIO_REENTRANT_JSPI ? 1 : 0",
+    )
+    .unwrap();
+    // SAFETY: a NUL-terminated script evaluated on the host.
+    unsafe { emscripten_run_script_int(script.as_ptr()) != 0 }
+}
+
+/// Suspends the calling activation until `js`, run on the host after the
+/// suspension, has settled; the value it settles with comes back.
+fn suspend_on(js: &str) -> i32 {
+    // SAFETY: a fresh promise handle, destroyed below.
+    let promise = unsafe { emscripten_promise_create() };
+    run_js(&format!(
+        "Promise.resolve().then(() => {js}).then((v) => _emscripten_promise_resolve({}, 0, v))",
+        promise as usize
+    ));
+    // SAFETY: the handle is live; the caller has checked `jspi_linked`.
+    let value = unsafe { emscripten_promise_await_unchecked(promise) } as i32;
+    // SAFETY: created above, awaited once.
+    unsafe { emscripten_promise_destroy(promise) };
+    value
+}
+
+// Promising export: a sibling fiber driving its own runtime through a park.
+#[no_mangle]
+pub extern "C" fn tokio_test_reenter() -> i32 {
+    rt().block_on(async {
+        sleep(Duration::from_millis(5)).await;
+        42
+    })
+}
+
+// Promising export: a sibling `LocalSet` that parks.
+#[no_mangle]
+pub extern "C" fn tokio_test_reenter_local() -> i32 {
+    let rt = rt();
+    let local = LocalSet::new();
+    rt.block_on(local.run_until(async {
+        let task = tokio::task::spawn_local(async {
+            sleep(Duration::from_millis(5)).await;
+            40
+        });
+        task.await.unwrap() + 2
+    }))
+}
+
+// Non-promising export called during a task-issued suspension: a `block_on`
+// that needs no park. Without the fiber hooks the runtime is still entered
+// there, so it panics as nested.
+#[no_mangle]
+pub extern "C" fn tokio_test_reenter_sync() -> i32 {
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let res = std::panic::catch_unwind(|| rt().block_on(async { 1 }));
+    std::panic::set_hook(hook);
+    match res {
+        Ok(v) => v,
+        Err(e) if is_nested_runtime_panic(&e) => -1,
+        Err(_) => -2,
+    }
+}
+
+// A suspension issued from task code leaves the runtime only with the fiber
+// hooks; without them a sibling `block_on` during it is nested.
+#[tokio::test]
+async fn task_suspension_leaves_only_with_hooks() {
+    require_jspi!();
+    if cfg!(not(panic = "unwind")) {
+        return;
+    }
+    let code = tokio::spawn(async { suspend_on("wasmExports.tokio_test_reenter_sync()") })
+        .await
+        .unwrap();
+    assert_eq!(code, if hooks_linked() { 1 } else { -1 });
+}
+
+// The `lookup_host` shape: a suspending import called from task code, during
+// which a sibling fiber drives its own runtime to completion. The task must
+// resume as itself, on its own runtime.
+#[tokio::test]
+async fn sibling_fiber_during_task_suspension() {
+    require_jspi!();
+    if !hooks_linked() {
+        return;
+    }
+    let out = tokio::spawn(async {
+        let id = tokio::task::id();
+        let b = suspend_on("wasmExports.tokio_test_reenter()");
+        assert_eq!(tokio::task::id(), id);
+        // B's runtime is gone; this spawn only works if we are back on ours.
+        b + tokio::spawn(async { 1 }).await.unwrap()
+    })
+    .await
+    .unwrap();
+    assert_eq!(out, 43);
+}
+
+// A `LocalSet` entered in fiber A survives fiber B entering and parking its
+// own `LocalSet` while A is suspended from task code.
+#[test]
+fn local_set_survives_sibling_fiber() {
+    require_jspi!();
+    if !hooks_linked() {
+        return;
+    }
+    let rt = rt();
+    let local = LocalSet::new();
+    let out = rt.block_on(local.run_until(async {
+        let first = tokio::task::spawn_local(async { 1 });
+        let b = suspend_on("wasmExports.tokio_test_reenter_local()");
+        let second = tokio::task::spawn_local(async { 2 });
+        first.await.unwrap() + second.await.unwrap() + b
+    }));
+    assert_eq!(out, 45);
+}
+
+// A runs while B is suspended, then B resumes. Needs each fiber on its own
+// shadow stack (`-sREENTRANT_JSPI`); the reentrant lane opts in.
+#[test]
+fn interleaved_suspended_runtimes() {
+    require_jspi!();
+    if !hooks_linked() || !reentrant_linked() {
+        return;
+    }
+    run_js(
+        "globalThis.tokioReenter = new Promise((resolve) => \
+         setTimeout(() => resolve(wasmExports.tokio_test_reenter()), 5))",
+    );
+    let sum = rt().block_on(async {
+        sleep(Duration::from_millis(20)).await;
+        5
+    });
+    assert_eq!(sum, 5);
+    assert_eq!(suspend_on("globalThis.tokioReenter"), 42);
 }
 
 #[test]
@@ -240,6 +428,8 @@ async fn farther_timer_survives_nearer_timer_firing() {
 
 // A host activation can spawn onto the parked runtime: `tokio::spawn` sees
 // the entered runtime's handle, and the spawn unparks the root to run it.
+// With the fiber hooks the parked runtime's context is not on the thread,
+// so the host activation spawns through the handle it holds.
 #[test]
 fn host_activation_spawns_onto_parked_runtime() {
     require_jspi!();
@@ -247,8 +437,16 @@ fn host_activation_spawns_onto_parked_runtime() {
     let tx2 = tx.clone();
     let runtime = rt();
     let handle = runtime.handle().clone();
+    let handle1 = if hooks_linked() {
+        Some(handle.clone())
+    } else {
+        None
+    };
     host_callback(10, move || {
-        tokio::spawn(async move { tx.send(1).await.unwrap() });
+        match handle1 {
+            Some(handle1) => handle1.spawn(async move { tx.send(1).await.unwrap() }),
+            None => tokio::spawn(async move { tx.send(1).await.unwrap() }),
+        };
         handle.spawn(async move { tx2.send(2).await.unwrap() });
     });
     let out = runtime.block_on(async { rx.recv().await.unwrap() + rx.recv().await.unwrap() });

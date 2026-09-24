@@ -1314,6 +1314,62 @@ jobs:
           CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: node
           RUSTFLAGS: "--cfg tokio_unstable -Dwarnings -Adeprecated -Clink-args=-sALLOW_MEMORY_GROWTH=1 -Clink-args=-sEXIT_RUNTIME=1 -Clink-args=-sSTACK_SIZE=1048576 -Clink-args=-sNODERAWSOCKETS -Clink-args=-sNODERAWFS -Clink-args=--pre-js=tokio/tests/rt_emscripten_pre.js"
 
+  wasm32-unknown-emscripten-jspi-hooks:
+    name: test tokio for wasm32-unknown-emscripten (JSPI hooks)
+    needs: basics
+    runs-on: ubuntu-latest
+    # TEMPORARY: `--cfg tokio_unstable_jspi_hooks` links `jspi_register` from
+    # `<emscripten/jspi.h>` (emscripten-core/emscripten#27698, #27699), whose
+    # boundary instrumentation is a binaryen pass (WebAssembly/binaryen
+    # `jspi-hooks`); overlay both on the `${{ env.emsdk_version }}` emsdk until
+    # they are released.
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust ${{ env.rust_emscripten_beta }}
+        uses: dtolnay/rust-toolchain@beta
+        with:
+          toolchain: ${{ env.rust_emscripten_beta }}
+          targets: wasm32-unknown-emscripten
+
+      - name: Install Emscripten
+        uses: emscripten-core/setup-emsdk@v16
+        with:
+          version: ${{ env.emsdk_version }}
+
+      - name: Overlay emscripten ${{ env.emsdk_version }}-cf.emscripten and binaryen jspi-hooks
+        run: |
+          git clone --depth 1 --branch ${{ env.emsdk_version }}-cf.emscripten https://github.com/guybedford/emscripten.git em-fork
+          python3 em-fork/bootstrap.py
+          rm -rf "$EMSDK/upstream/emscripten"
+          ln -s "$(pwd)/em-fork" "$EMSDK/upstream/emscripten"
+          curl -fsSL https://github.com/guybedford/binaryen/releases/download/version_132_jspi_hooks_1/binaryen-version_132_jspi_hooks_1-x86_64-linux.tar.gz | tar xz
+          sed -i "s|^BINARYEN_ROOT = .*|BINARYEN_ROOT = '$(pwd)/binaryen-version_132_jspi_hooks_1'|" "$EMSDK/.emscripten"
+          echo "EM_CONFIG=$EMSDK/.emscripten" >> "$GITHUB_ENV"
+          EM_CONFIG="$EMSDK/.emscripten" emcc --version
+          "$(pwd)/binaryen-version_132_jspi_hooks_1/bin/wasm-opt" --version
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test tokio for emscripten (JSPI hooks)
+        run: cargo test -p tokio --target wasm32-unknown-emscripten --features "rt,time,sync,macros,fs,io-util,io-std,test-util,net" --tests
+        working-directory: tokio
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: node
+          RUSTFLAGS: "--cfg tokio_unstable --cfg tokio_unstable_jspi_hooks -Dwarnings -Adeprecated -Clink-args=-sALLOW_MEMORY_GROWTH=1 -Clink-args=-sEXIT_RUNTIME=1 -Clink-args=-sJSPI -Clink-args=-sJSPI_HOOKS -Clink-args=-sSTACK_SIZE=1048576 -Clink-args=-sNODERAWSOCKETS -Clink-args=-sNODERAWFS -Clink-args=-sJSPI_EXPORTS=tokio_test_reenter,tokio_test_reenter_local -Clink-args=--pre-js=tokio/tests/rt_emscripten_pre.js"
+
+      # Each fiber on its own shadow stack: suspended fibers may interleave.
+      - name: Test tokio for emscripten (reentrant JSPI)
+        run: cargo test -p tokio --target wasm32-unknown-emscripten --features "rt,time,sync,macros,fs,io-util,io-std,test-util,net" --tests
+        working-directory: tokio
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER: node
+          TOKIO_REENTRANT_JSPI: 1
+          RUSTFLAGS: "--cfg tokio_unstable --cfg tokio_unstable_jspi_hooks -Dwarnings -Adeprecated -Clink-args=-sALLOW_MEMORY_GROWTH=1 -Clink-args=-sEXIT_RUNTIME=1 -Clink-args=-sJSPI -Clink-args=-sREENTRANT_JSPI -Clink-args=-sSTACK_SIZE=1048576 -Clink-args=-sNODERAWSOCKETS -Clink-args=-sNODERAWFS -Clink-args=-sJSPI_EXPORTS=tokio_test_reenter,tokio_test_reenter_local -Clink-args=--pre-js=tokio/tests/rt_emscripten_pre.js"
+
   check-external-types:
     name: check-external-types (${{ matrix.os }})
     needs: basics

@@ -7,7 +7,8 @@
 //! behind `blocking_recv` and friends park through here, so neither needs the
 //! `rt` feature; with `net`, Emscripten's `epoll_wait` suspends as well. The
 //! runtime stays entered while parked, so a `block_on` from another
-//! activation on the thread during the park panics as a nested runtime.
+//! activation on the thread during the park panics as a nested runtime,
+//! unless the fiber hooks of `context::jspi` own the context.
 
 use std::ffi::c_void;
 use std::ptr;

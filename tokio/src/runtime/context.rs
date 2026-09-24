@@ -18,6 +18,11 @@ cfg_rt! {
     mod runtime;
     pub(crate) use runtime::{EnterRuntime, enter_runtime};
 
+    #[cfg(all(tokio_unstable_jspi_hooks, target_os = "emscripten", not(target_feature = "atomics")))]
+    mod jspi;
+    #[cfg(all(tokio_unstable_jspi_hooks, target_os = "emscripten", not(target_feature = "atomics")))]
+    pub(crate) use jspi::hooks_active;
+
     mod scoped;
     use scoped::Scoped;
 
