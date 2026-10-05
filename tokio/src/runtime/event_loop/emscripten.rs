@@ -95,12 +95,19 @@ impl Drop for ImmediateWakes {
 }
 
 #[cfg(feature = "net")]
+type EpollCallback = unsafe extern "C-unwind" fn(epfd: i32, user_data: *mut c_void);
+
+#[cfg(feature = "net")]
 extern "C" {
-    /// Persistent readiness listener on an epoll fd: `cb(user_data)` runs on
-    /// the host loop whenever the set has uncollected ready events. Holds
-    /// nothing itself.
-    fn emscripten_epoll_add_listener(epfd: i32, cb: Callback, user_data: *mut c_void) -> i32;
-    fn emscripten_epoll_remove_listener(epfd: i32, cb: Callback, user_data: *mut c_void) -> i32;
+    /// Persistent readiness listener on an epoll fd: `cb(epfd, user_data)`
+    /// runs on the host loop whenever the set has uncollected ready events.
+    /// Holds nothing itself.
+    fn emscripten_epoll_listener_add(epfd: i32, cb: EpollCallback, user_data: *mut c_void) -> i32;
+    fn emscripten_epoll_listener_remove(
+        epfd: i32,
+        cb: EpollCallback,
+        user_data: *mut c_void,
+    ) -> i32;
 }
 
 /// The host loop's callbacks into the runtime, and what they hold.
@@ -183,9 +190,9 @@ impl Reactor {
         // which removes the listener in `stop` before the loop drops.
         let rc = unsafe {
             if on {
-                emscripten_epoll_add_listener(epfd, wake, this)
+                emscripten_epoll_listener_add(epfd, ready, this)
             } else {
-                emscripten_epoll_remove_listener(epfd, wake, this)
+                emscripten_epoll_listener_remove(epfd, ready, this)
             }
         };
         if rc != 0 {
@@ -238,6 +245,13 @@ impl Reactor {
 /// next one.
 unsafe extern "C-unwind" fn deadline(user_data: *mut c_void) {
     let _immediate = ImmediateWakes::enter();
+    // SAFETY: as `wake`.
+    unsafe { wake(user_data) }
+}
+
+/// The readiness listener fired.
+#[cfg(feature = "net")]
+unsafe extern "C-unwind" fn ready(_epfd: i32, user_data: *mut c_void) {
     // SAFETY: as `wake`.
     unsafe { wake(user_data) }
 }

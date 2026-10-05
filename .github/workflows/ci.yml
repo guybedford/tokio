@@ -1265,9 +1265,10 @@ jobs:
     name: test tokio for wasm32-unknown-emscripten (unstable)
     needs: basics
     runs-on: ubuntu-latest
-    # TEMPORARY: a hosted event loop links `emscripten_epoll_add_listener`
-    # (emscripten-core/emscripten#27547); overlay the `${{ env.emsdk_version }}`
-    # release plus that change on the matching emsdk until it is released.
+    # TEMPORARY: a hosted event loop links `emscripten_epoll_add_listener`,
+    # which is on emscripten main (emscripten-core/emscripten#27547) but not
+    # yet released; overlay main plus emscripten-core/emscripten#27742 on the
+    # tip-of-tree emsdk (whose LLVM its libc needs).
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust ${{ env.rust_emscripten_beta }}
@@ -1279,13 +1280,13 @@ jobs:
       - name: Install Emscripten
         uses: emscripten-core/setup-emsdk@v16
         with:
-          version: ${{ env.emsdk_version }}
+          version: tot
 
       # The emsdk config (LLVM_ROOT, BINARYEN_ROOT) stays in force; only the
       # frontend is swapped.
-      - name: Overlay emscripten ${{ env.emsdk_version }}-cf.emscripten
+      - name: Overlay emscripten dns-callback branch
         run: |
-          git clone --depth 1 --branch ${{ env.emsdk_version }}-cf.emscripten https://github.com/guybedford/emscripten.git em-fork
+          git clone --depth 1 --branch dns-callback https://github.com/guybedford/emscripten.git em-fork
           python3 em-fork/bootstrap.py
           rm -rf "$EMSDK/upstream/emscripten"
           ln -s "$(pwd)/em-fork" "$EMSDK/upstream/emscripten"
