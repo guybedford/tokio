@@ -39,6 +39,9 @@ cfg_net! {
     mod lookup_host;
     pub use lookup_host::lookup_host;
 
+    #[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
+    mod emscripten_dns;
+
     pub mod tcp;
     pub use tcp::listener::TcpListener;
     pub use tcp::stream::TcpStream;

@@ -4,10 +4,10 @@
 //! timer deadlines, for host-context wakes (including a cross-loop oneshot),
 //! between the batches of a self-yielding task that must not starve either,
 //! and for epoll readiness in a TCP round trip between a server
-//! on one loop and a client on the other, then a server whose client is a
-//! Node socket connecting after every tokio timer has fired: for that
-//! stretch only the event loop's own hold on the runtime keeps the process
-//! alive.
+//! on one loop and a client on the other, for a name resolved by the host's
+//! DNS callback, then a server whose client is a Node socket connecting
+//! after every tokio timer has fired: for that stretch only the event loop's
+//! own hold on the runtime keeps the process alive.
 //!
 //! `harness = false`, so `main` can return into the host loop. Runs both with
 //! and without `-sJSPI`; without it any stack suspension traps, so completion
@@ -30,7 +30,7 @@ mod emscripten {
     use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
     use std::time::{Duration, Instant};
 
-    use tokio::runtime::{Builder, LocalEventLoop};
+    use tokio::runtime::{Builder, LocalEventLoop, UnhandledPanic};
 
     static COMPLETED: AtomicU32 = AtomicU32::new(0);
     static EXPECTED: AtomicU32 = AtomicU32::new(0);
@@ -61,6 +61,9 @@ mod emscripten {
             Builder::new_current_thread()
                 .enable_all()
                 .event_interval(4)
+                // A panicking root aborts the run, rather than leaving its
+                // siblings holding the runtime.
+                .unhandled_panic(UnhandledPanic::ShutdownRuntime)
                 .build_hosted_local_event_loop(Default::default())
                 .unwrap(),
         ))
@@ -164,6 +167,37 @@ mod emscripten {
                 let mut buf = [0u8; 5];
                 sock.read_exact(&mut buf).await.unwrap();
                 assert_eq!(&buf, b"world");
+            });
+
+            // A name: the host resolves it (`node:dns`) and calls back; no
+            // stack suspends for it.
+            root(el_b, async move {
+                use tokio::net::lookup_host;
+
+                let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let port = listener.local_addr().unwrap().port();
+                let accepted = tokio::spawn(async move { listener.accept().await.unwrap() });
+                let mut sock = TcpStream::connect(("localhost", port)).await.unwrap();
+                sock.write_all(b"named").await.unwrap();
+                let (mut peer, _) = accepted.await.unwrap();
+                let mut buf = [0u8; 5];
+                peer.read_exact(&mut buf).await.unwrap();
+                assert_eq!(&buf, b"named");
+
+                let addrs: Vec<_> = lookup_host("localhost:80").await.unwrap().collect();
+                assert!(!addrs.is_empty());
+                assert!(addrs.iter().all(|a| a.ip().is_loopback() && a.port() == 80));
+
+                let err = lookup_host("localhost:http").await.err().unwrap();
+                assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+
+                // `node:dns` throws for an empty name.
+                assert!(lookup_host(":80").await.is_err());
+
+                let err = lookup_host("name.invalid:80").await.err().unwrap();
+                assert!(err
+                    .to_string()
+                    .contains("failed to lookup address information"));
             });
 
             // A client outside tokio, connecting long after the last tokio

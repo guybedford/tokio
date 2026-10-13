@@ -166,7 +166,6 @@ cfg_net! {
         type Future = sealed::MaybeReady;
 
         fn to_socket_addrs(&self, _: sealed::Internal) -> Self::Future {
-            use crate::blocking::spawn_blocking;
             use sealed::MaybeReady;
 
             // First check if the input parses as a socket address
@@ -176,12 +175,7 @@ cfg_net! {
                 return MaybeReady(sealed::State::Ready(Some(addr)));
             }
 
-            // Run DNS lookup on the blocking pool
-            let s = self.to_owned();
-
-            MaybeReady(sealed::State::Blocking(spawn_blocking(move || {
-                std::net::ToSocketAddrs::to_socket_addrs(&s)
-            })))
+            sealed::resolve_str(self)
         }
     }
 
@@ -194,7 +188,6 @@ cfg_net! {
         type Future = sealed::MaybeReady;
 
         fn to_socket_addrs(&self, _: sealed::Internal) -> Self::Future {
-            use crate::blocking::spawn_blocking;
             use sealed::MaybeReady;
 
             let (host, port) = *self;
@@ -214,11 +207,7 @@ cfg_net! {
                 return MaybeReady(sealed::State::Ready(Some(addr)));
             }
 
-            let host = host.to_owned();
-
-            MaybeReady(sealed::State::Blocking(spawn_blocking(move || {
-                std::net::ToSocketAddrs::to_socket_addrs(&(&host[..], port))
-            })))
+            sealed::resolve_host(host, port)
         }
     }
 
@@ -270,8 +259,6 @@ pub(crate) mod sealed {
     pub struct Internal;
 
     cfg_net! {
-        use crate::blocking::JoinHandle;
-
         use std::option;
         use std::pin::Pin;
         use std::task::{ready,Context, Poll};
@@ -281,10 +268,43 @@ pub(crate) mod sealed {
         #[derive(Debug)]
         pub struct MaybeReady(pub(super) State);
 
+        #[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
+        use crate::net::emscripten_dns::Lookup;
+
+        // Emscripten without threads resolves a name on the host where it can
+        // (see `net::emscripten_dns`); a malformed port is `std`'s error.
+
+        /// Resolves a `host:port` string whose host is a name.
+        pub(super) fn resolve_str(s: &str) -> MaybeReady {
+            #[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
+            if let Some((host, Ok(port))) = s.rsplit_once(':').map(|(h, p)| (h, p.parse::<u16>())) {
+                if let Some(lookup) = Lookup::start(host, port) {
+                    return MaybeReady(State::Host(lookup));
+                }
+            }
+            let s = s.to_owned();
+            MaybeReady(State::Blocking(crate::blocking::spawn_blocking(move || {
+                std::net::ToSocketAddrs::to_socket_addrs(&s)
+            })))
+        }
+
+        pub(super) fn resolve_host(host: &str, port: u16) -> MaybeReady {
+            #[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
+            if let Some(lookup) = Lookup::start(host, port) {
+                return MaybeReady(State::Host(lookup));
+            }
+            let host = host.to_owned();
+            MaybeReady(State::Blocking(crate::blocking::spawn_blocking(move || {
+                std::net::ToSocketAddrs::to_socket_addrs(&(&host[..], port))
+            })))
+        }
+
         #[derive(Debug)]
         pub(super) enum State {
             Ready(Option<SocketAddr>),
-            Blocking(JoinHandle<io::Result<vec::IntoIter<SocketAddr>>>),
+            Blocking(crate::blocking::JoinHandle<io::Result<vec::IntoIter<SocketAddr>>>),
+            #[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
+            Host(Lookup),
         }
 
         #[doc(hidden)]
@@ -305,6 +325,12 @@ pub(crate) mod sealed {
                     }
                     State::Blocking(ref mut rx) => {
                         let res = ready!(Pin::new(rx).poll(cx))?.map(OneOrMore::More);
+
+                        Poll::Ready(res)
+                    }
+                    #[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
+                    State::Host(ref mut lookup) => {
+                        let res = ready!(Pin::new(lookup).poll(cx)).map(OneOrMore::More);
 
                         Poll::Ready(res)
                     }

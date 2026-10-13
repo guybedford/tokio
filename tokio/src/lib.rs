@@ -504,6 +504,10 @@
 //! `socketpair(2)` (so `UnixStream::pair`), no datagram `AF_UNIX` (so
 //! `UnixDatagram`), and no `SO_PEERCRED` (so `peer_cred`).
 //!
+//! With `-sNODERAWSOCKETS` and without pthreads, a name resolves on the host
+//! (`node:dns`) through a callback rather than on the blocking pool, so no
+//! stack waits for it.
+//!
 //! With `--cfg tokio_unstable`, `Builder::build_hosted_local_event_loop`
 //! builds a `LocalEventLoop` driven by the JavaScript host event loop
 //! itself, which needs neither JSPI nor pthreads: the runtime registers its
