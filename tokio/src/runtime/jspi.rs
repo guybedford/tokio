@@ -131,15 +131,31 @@ fn detect_jspi() -> JspiState {
     }
 }
 
-/// Whether JSPI suspension is available: linked with `-sJSPI`.
-pub(crate) fn jspi_enabled() -> bool {
+fn jspi_state() -> JspiState {
     static STATE: OnceLock<JspiState> = OnceLock::new();
-    match *STATE.get_or_init(detect_jspi) {
-        JspiState::Disabled => false,
-        JspiState::Enabled => true,
+    *STATE.get_or_init(detect_jspi)
+}
+
+/// Whether JSPI suspension is available: linked with `-sJSPI` on a supported
+/// Emscripten version.
+pub(crate) fn jspi_enabled() -> bool {
+    matches!(jspi_state(), JspiState::Enabled)
+}
+
+/// Panics for a wait that could only complete by suspending, when
+/// [`jspi_enabled`] is false.
+pub(crate) fn cannot_suspend() -> ! {
+    match jspi_state() {
         JspiState::UnsupportedVersion(major, minor, tiny) => panic!(
-            "cannot use JSPI on wasm32-unknown-emscripten with Emscripten \
-             {major}.{minor}.{tiny}: Emscripten 6.0.10 or later is required"
+            "cannot block on wasm32-unknown-emscripten: this wait would \
+             suspend on the host event loop, which needs JSPI on Emscripten \
+             6.0.10 or later, but the build uses Emscripten \
+             {major}.{minor}.{tiny}"
+        ),
+        _ => panic!(
+            "cannot block on wasm32-unknown-emscripten: this wait would \
+             suspend on the host event loop, which needs the build to link \
+             `-sJSPI`"
         ),
     }
 }

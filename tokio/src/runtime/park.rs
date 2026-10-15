@@ -147,9 +147,10 @@ impl Inner {
             return;
         }
 
-        // If JSPI is disabled, then we cannot park on JSPI, so instead use a
-        // spin loop for a timed park, and a panic for any other suspension.
-        // A zero-duration park returns immediately as on native.
+        // Without JSPI suspension (not linked, or an unsupported Emscripten),
+        // a timed park sleeps and a zero-duration park returns immediately as
+        // on native. Only a park without a deadline needs to suspend, so only
+        // that panics.
         if !crate::runtime::jspi::jspi_enabled() {
             match dur {
                 Some(Duration::ZERO) => return,
@@ -157,11 +158,7 @@ impl Inner {
                     std::thread::sleep(dur);
                     return;
                 }
-                None => panic!(
-                    "cannot block on wasm32-unknown-emscripten: this wait would \
-                     suspend on the host event loop, which needs the build to \
-                     link `-sJSPI`"
-                ),
+                None => crate::runtime::jspi::cannot_suspend(),
             }
         }
 
