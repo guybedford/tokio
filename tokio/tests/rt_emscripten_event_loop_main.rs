@@ -1,13 +1,13 @@
 //! `LocalEventLoop` driven by the Emscripten host loop itself. `main` spawns
-//! tasks on two hosted event loops and returns; from there the tasks
-//! progress only through the drives the loops schedule on the host: for
-//! timer deadlines, for host-context wakes (including a cross-loop oneshot),
-//! between the batches of a self-yielding task that must not starve either,
-//! and, with `net`, for epoll readiness in a TCP round trip between a server
-//! on one loop and a client on the other, then a server whose client is a
-//! Node socket connecting after every tokio timer has fired: for that
-//! stretch only the event loop's own hold on the runtime keeps the process
-//! alive.
+//! tasks on hosted event loops and returns; from there the tasks progress
+//! only through the drives the loops schedule on the host: for timer
+//! deadlines, for host-context wakes (including cross-loop oneshots sent
+//! from a drive of the other loop), between the batches of a self-yielding
+//! task that must not starve either, and, with `net`, for epoll readiness in
+//! a TCP round trip between a server on one loop and a client on the other,
+//! then a server whose client is a Node socket connecting after every tokio
+//! timer has fired: for that stretch only the event loop's own hold on the
+//! runtime keeps the process alive.
 //!
 //! `harness = false`, so `main` can return into the host loop. Runs both with
 //! and without `-sJSPI`; without it any stack suspension traps, so completion
@@ -60,6 +60,15 @@ mod emscripten {
             Builder::new_current_thread()
                 .enable_all()
                 .event_interval(4)
+                .build_hosted_local_event_loop(Default::default())
+                .unwrap(),
+        ))
+    }
+
+    fn event_loop_without_io() -> &'static LocalEventLoop {
+        Box::leak(Box::new(
+            Builder::new_current_thread()
+                .enable_time()
                 .build_hosted_local_event_loop(Default::default())
                 .unwrap(),
         ))
@@ -153,6 +162,22 @@ mod emscripten {
         root(el_b, async move {
             tokio::time::sleep(Duration::from_millis(5)).await;
             assert_eq!(rx.await.unwrap(), 7);
+        });
+
+        // Wakes between two loops with no other work, each sent from a drive
+        // of the other. Without an I/O driver, whose unpark would make the
+        // woken loop's epoll set ready, only its hosted waker can drive it.
+        let el_c = event_loop_without_io();
+        let el_d = event_loop_without_io();
+        let (to_c, from_d) = tokio::sync::oneshot::channel::<u32>();
+        let (to_d, from_c) = tokio::sync::oneshot::channel::<u32>();
+        root(el_c, async move {
+            let v = from_d.await.unwrap();
+            to_d.send(v + 1).unwrap();
+        });
+        root(el_d, async move {
+            to_c.send(1).unwrap();
+            assert_eq!(from_c.await.unwrap(), 2);
         });
 
         #[cfg(feature = "net")]

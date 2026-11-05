@@ -11,7 +11,7 @@ use super::Shared;
 use crate::runtime::driver::Driver;
 use crate::runtime::Handle;
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::io;
 use std::ptr;
@@ -49,35 +49,38 @@ type PromiseCallback =
     unsafe extern "C-unwind" fn(*mut *mut c_void, *mut c_void, *mut c_void) -> i32;
 
 thread_local! {
-    /// Set while the deadline timer's callback or a drive's follow-up wake
-    /// is on the stack: a wake from there schedules its drive as an
-    /// immediate rather than a microtask (see [`Hosted`]).
+    /// Set while the deadline timer's callback is on the stack: a wake from
+    /// there schedules its drive as an immediate rather than a microtask
+    /// (see [`Hosted`]).
     static IMMEDIATE_WAKES: Cell<bool> = const { Cell::new(false) };
-    /// Set while a drive is on the stack: its wakes collect into `WOKEN`
-    /// and one follow-up drive is scheduled when it ends.
+    /// Set while a drive is on the stack: its wakes collect into `WOKEN`,
+    /// once per loop, whichever loop they are for.
     static IN_DRIVE: Cell<bool> = const { Cell::new(false) };
-    static WOKEN: Cell<bool> = const { Cell::new(false) };
+    static WOKEN: RefCell<Vec<Arc<Hosted>>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Runs a drive or `block_on` of the event loop: the wakes it causes, its
-/// own leftover wake included, coalesce into one follow-up drive scheduled
-/// at its end as an immediate, so a busy loop yields a host turn between
-/// batches. Wakes outside any drive each schedule their own drive.
-pub(super) fn drive_scope<R>(handle: &Handle, f: impl FnOnce() -> R) -> R {
-    struct Reset(bool);
-    impl Drop for Reset {
+/// Runs a drive or `block_on` of an event loop: the wakes it causes, its
+/// own leftover wake included, coalesce into one follow-up drive per woken
+/// hosted loop, scheduled at its end as an immediate, so a busy loop yields
+/// a host turn between batches. Wakes outside any drive each schedule their
+/// own drive.
+pub(super) fn drive_scope<R>(_handle: &Handle, f: impl FnOnce() -> R) -> R {
+    struct Scope(bool);
+    impl Drop for Scope {
         fn drop(&mut self) {
             IN_DRIVE.with(|d| d.set(self.0));
+            if !self.0 {
+                // Scheduling only arms the host: nothing here wakes again.
+                WOKEN.with(|w| {
+                    for hosted in w.borrow_mut().drain(..) {
+                        hosted.schedule(false);
+                    }
+                });
+            }
         }
     }
-    let reset = Reset(IN_DRIVE.with(|d| d.replace(true)));
-    let out = f();
-    drop(reset);
-    if !IN_DRIVE.with(Cell::get) && WOKEN.with(|w| w.replace(false)) {
-        let _immediate = ImmediateWakes::enter();
-        handle.inner.driver().wake_host();
-    }
-    out
+    let _scope = Scope(IN_DRIVE.with(|d| d.replace(true)));
+    f()
 }
 
 struct ImmediateWakes(bool);
@@ -294,11 +297,12 @@ fn next_deadline(_handle: &Handle) -> Option<Duration> {
 /// unwinds but in the host context that woke it. Every such wake schedules
 /// its own drive: a pending drive belongs to the context that armed it, and
 /// a wake from another context must not fold into it (see [`drive_scope`]).
-/// Wakes from inside a drive (a task waking another, or the batch leaving
-/// work) coalesce into one follow-up, and it and the deadline timer's wake
-/// take an immediate instead: a microtask there would run before host
-/// timers and I/O and let a self-waking task starve them; a timeout the host
-/// clamps to a millisecond. A drive that finds nothing is normal.
+/// Wakes from inside a drive (a task waking another, on this loop or from
+/// another's drive, or the batch leaving work) coalesce into one follow-up,
+/// and it and the deadline timer's wake take an immediate instead: a
+/// microtask there would run before host timers and I/O and let a
+/// self-waking task starve them; a timeout the host clamps to a
+/// millisecond. A drive that finds nothing is normal.
 struct Hosted {
     target: Weak<Shared>,
 }
@@ -315,7 +319,12 @@ impl Wake for Hosted {
 
     fn wake_by_ref(self: &Arc<Self>) {
         if IN_DRIVE.with(Cell::get) {
-            WOKEN.with(|w| w.set(true));
+            WOKEN.with(|w| {
+                let mut woken = w.borrow_mut();
+                if !woken.iter().any(|h| Arc::ptr_eq(h, self)) {
+                    woken.push(self.clone());
+                }
+            });
             return;
         }
         self.schedule(!IMMEDIATE_WAKES.with(Cell::get));
