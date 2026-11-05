@@ -23,7 +23,7 @@ tokio-test = { path = "tokio-test" }
 tokio-util = { path = "tokio-util" }
 # TEMPORARY: mio's wasm32-unknown-emscripten target (tokio-rs/mio#1969), until
 # it is released.
-mio = { git = "https://github.com/guybedford/mio", branch = "emscripten" }
+mio = { git = "https://github.com/guybedford/mio", tag = "1.2.3-cf.emscripten" }
 
 [workspace.metadata.spellcheck]
 config = "spellcheck.toml"
