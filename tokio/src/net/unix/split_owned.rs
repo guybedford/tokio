@@ -397,8 +397,8 @@ impl AsyncWrite for OwnedWriteHalf {
     }
 
     // `poll_shutdown` on a write half shutdowns the stream in the "write" direction.
-    fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
-        let res = self.inner.shutdown_std(Shutdown::Write);
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let res = std::task::ready!(self.inner.poll_shutdown_write(cx));
         if res.is_ok() {
             Pin::into_inner(self).shutdown_on_drop = false;
         }

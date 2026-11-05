@@ -438,3 +438,64 @@ async fn write_closed() {
 
     assert!(!ready_event.is_write_closed());
 }
+
+// The Emscripten socket glue sends queued writes and then the FIN after
+// `shutdown` returns: `poll_shutdown` completes only once they are flushed,
+// so here not before the Node peer reads.
+#[cfg(all(target_os = "emscripten", feature = "time"))]
+#[tokio::test]
+async fn shutdown_waits_for_flush() {
+    use std::time::Duration;
+
+    extern "C" {
+        fn emscripten_run_script_int(script: *const std::ffi::c_char) -> i32;
+    }
+    fn run_js(script: &str) -> i32 {
+        let script = std::ffi::CString::new(script).unwrap();
+        // SAFETY: a NUL-terminated script evaluated on the host.
+        unsafe { emscripten_run_script_int(script.as_ptr()) }
+    }
+
+    // A Node peer that reads once told to (or after 2s, so that a failure
+    // still lets the process exit) and answers with the byte count.
+    run_js(
+        "const srv = require('net').createServer((s) => { \
+           srv.close(); s.unref(); s.pause(); let got = 0; \
+           s.on('data', (b) => { got += b.length; }); \
+           s.on('end', () => s.end(String(got))); \
+           Module.flushTest.resume = () => s.resume(); \
+           setTimeout(() => s.resume(), 2000).unref(); \
+         }); \
+         srv.unref(); Module.flushTest = { port: 0 }; \
+         srv.listen(0, '127.0.0.1', () => { Module.flushTest.port = srv.address().port; }); 0",
+    );
+    let port = loop {
+        match run_js("Module.flushTest.port") {
+            0 => tokio::time::sleep(Duration::from_millis(5)).await,
+            port => break port as u16,
+        }
+    };
+    let mut stream = assert_ok!(TcpStream::connect(("127.0.0.1", port)).await);
+
+    // Write until the kernel buffers are full and the glue holds the rest.
+    let chunk = vec![b'x'; 64 * 1024];
+    let mut written = 0;
+    while let Ok(ready) = tokio::time::timeout(Duration::from_millis(100), stream.writable()).await
+    {
+        assert_ok!(ready);
+        match stream.try_write(&chunk) {
+            Ok(n) => written += n,
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            Err(e) => panic!("{e}"),
+        }
+    }
+
+    let mut shutdown = task::spawn(stream.shutdown());
+    assert_pending!(shutdown.poll(), "shutdown must wait for the flush");
+    run_js("Module.flushTest.resume(); 0");
+    assert_ok!(shutdown.await);
+
+    let mut got = String::new();
+    assert_ok!(stream.read_to_string(&mut got).await);
+    assert_eq!(got, written.to_string());
+}

@@ -998,6 +998,17 @@ impl UnixStream {
         self.io.shutdown(how)
     }
 
+    /// Shuts down the write half for `poll_shutdown`, which on Emscripten
+    /// completes once queued writes and the FIN are flushed.
+    pub(super) fn poll_shutdown_write(&self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.shutdown_std(Shutdown::Write)?;
+        #[cfg(target_os = "emscripten")]
+        std::task::ready!(self.io.poll_write_flushed(cx))?;
+        #[cfg(not(target_os = "emscripten"))]
+        let _ = cx;
+        Poll::Ready(Ok(()))
+    }
+
     // These lifetime markers also appear in the generated documentation, and make
     // it more clear that this is a *borrowed* split.
     #[allow(clippy::needless_lifetimes)]
@@ -1075,9 +1086,8 @@ impl AsyncWrite for UnixStream {
         Poll::Ready(Ok(()))
     }
 
-    fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
-        self.shutdown_std(std::net::Shutdown::Write)?;
-        Poll::Ready(Ok(()))
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.poll_shutdown_write(cx)
     }
 }
 

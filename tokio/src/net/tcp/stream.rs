@@ -1145,6 +1145,17 @@ impl TcpStream {
         }
     }
 
+    /// Shuts down the write half for `poll_shutdown`, which on Emscripten
+    /// completes once queued writes and the FIN are flushed.
+    pub(super) fn poll_shutdown_write(&self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.shutdown_std(Shutdown::Write)?;
+        #[cfg(target_os = "emscripten")]
+        ready!(self.io.poll_write_flushed(cx))?;
+        #[cfg(not(target_os = "emscripten"))]
+        let _ = cx;
+        Poll::Ready(Ok(()))
+    }
+
     /// Gets the value of the `TCP_NODELAY` option on this socket.
     ///
     /// For more information about this option, see [`set_nodelay`].
@@ -1522,9 +1533,8 @@ impl AsyncWrite for TcpStream {
         Poll::Ready(Ok(()))
     }
 
-    fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
-        self.shutdown_std(std::net::Shutdown::Write)?;
-        Poll::Ready(Ok(()))
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.poll_shutdown_write(cx)
     }
 }
 

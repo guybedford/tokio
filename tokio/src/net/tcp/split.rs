@@ -13,7 +13,7 @@ use crate::net::TcpStream;
 
 use std::future::poll_fn;
 use std::io;
-use std::net::{Shutdown, SocketAddr};
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -405,8 +405,8 @@ impl AsyncWrite for WriteHalf<'_> {
     }
 
     // `poll_shutdown` on a write half shutdowns the stream in the "write" direction.
-    fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
-        self.0.shutdown_std(Shutdown::Write).into()
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.0.poll_shutdown_write(cx)
     }
 }
 
