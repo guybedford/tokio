@@ -6,6 +6,9 @@
 // A binary that sets `Module.tokioExpectDone` must also set `Module.tokioDone`
 // before the runtime exits: an event loop that stops holding the runtime too
 // early exits cleanly with its roots unfinished.
+//
+// A binary that sets `Module.tokioExpectAbort` passes only by aborting.
+
 // Immediates scheduled since load, for tests that bound them.
 Module.tokioImmediates = 0;
 if (globalThis.setImmediate) {
@@ -27,8 +30,22 @@ Module.tokioThens = 0;
   };
 }
 var tokioRuntimeExited = false;
+var tokioAborted = false;
 Module['onExit'] = () => { tokioRuntimeExited = true; };
+Module['onAbort'] = (what) => {
+  tokioAborted = true;
+  if (Module.tokioExpectAbort) {
+    console.log(`ok: aborted (${what})`);
+    process.exit(0);
+  }
+};
 process.on('exit', (code) => {
+  if (Module.tokioExpectAbort) {
+    if (tokioAborted) return;
+    console.error('rt_emscripten_pre.js: expected the runtime to abort');
+    process.exitCode = 1;
+    return;
+  }
   if (code === 0 && !tokioRuntimeExited) {
     console.error('rt_emscripten_pre.js: event loop drained before the runtime exited');
     process.exitCode = 1;

@@ -39,10 +39,11 @@ fn host_count(name: &str) -> i32 {
     unsafe { emscripten_run_script_int(script.as_ptr()) }
 }
 
-/// Promise reactions the host has seen (`rt_emscripten_pre.js` counts): a
-/// hosted drive scheduled from a host callback is one.
+/// Microtask drives scheduled, from the promise reactions the host has seen
+/// (`rt_emscripten_pre.js` counts): a hosted drive scheduled from a host
+/// callback is two, the drive and the one that aborts if it throws.
 fn thens() -> i32 {
-    host_count("tokioThens")
+    host_count("tokioThens") / 2
 }
 
 /// Immediates the host has seen: a drive's follow-up is one.

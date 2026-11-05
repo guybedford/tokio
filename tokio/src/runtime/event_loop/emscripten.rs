@@ -333,13 +333,26 @@ impl Hosted {
         }
         // SAFETY: a settled promise whose `then` runs `drive_microtask`
         // once, reclaiming the `Arc`; the handles are freed at once, which
-        // leaves the chained callback in place.
+        // leaves the chained callbacks in place.
+        //
+        // The host takes a JavaScript exception thrown through the drive (by
+        // an import; it unwinds the Rust frames, but `catch_unwind` does not
+        // catch it) as a rejection of `chained`, and the task it interrupted
+        // would stay running with nothing to wake it. Abort as `run` does
+        // for a panic.
         unsafe {
             let settled = emscripten_promise_create();
             emscripten_promise_resolve(settled, 0, ptr::null_mut());
             let chained = emscripten_promise_then(settled, drive_microtask, None, this);
+            let guarded = emscripten_promise_then(
+                chained,
+                drive_returned,
+                Some(drive_threw),
+                ptr::null_mut(),
+            );
             emscripten_promise_destroy(settled);
             emscripten_promise_destroy(chained);
+            emscripten_promise_destroy(guarded);
         }
     }
 }
@@ -352,6 +365,24 @@ unsafe extern "C-unwind" fn drive_microtask(
     // SAFETY: as `drive`; the `Arc<Hosted>` leaked in `schedule`.
     unsafe { drive(user_data) };
     0
+}
+
+/// Not `None`: the host releases the runtime hold of a `then` in whichever
+/// callback runs.
+unsafe extern "C-unwind" fn drive_returned(
+    _result: *mut *mut c_void,
+    _user_data: *mut c_void,
+    _value: *mut c_void,
+) -> i32 {
+    0
+}
+
+unsafe extern "C-unwind" fn drive_threw(
+    _result: *mut *mut c_void,
+    _user_data: *mut c_void,
+    _value: *mut c_void,
+) -> i32 {
+    std::process::abort()
 }
 
 unsafe extern "C-unwind" fn drive(user_data: *mut c_void) {

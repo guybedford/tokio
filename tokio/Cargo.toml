@@ -205,5 +205,11 @@ name = "rt_emscripten_event_loop_main"
 path = "tests/rt_emscripten_event_loop_main.rs"
 harness = false
 
+# `main` returns into the host event loop; passes only by aborting.
+[[test]]
+name = "rt_emscripten_event_loop_abort"
+path = "tests/rt_emscripten_event_loop_abort.rs"
+harness = false
+
 [lints]
 workspace = true
