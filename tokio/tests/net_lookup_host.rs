@@ -50,3 +50,13 @@ async fn resolve_dns() -> io::Result<()> {
 
     Ok(())
 }
+
+// `rt_emscripten_pre.js` fails this name with `EAI_AGAIN`, which the
+// resolver must report rather than wait on as if still pending.
+#[cfg(all(target_os = "emscripten", feature = "time"))]
+#[tokio::test]
+async fn resolve_dns_eai_again() {
+    let lookup = net::lookup_host("eai-again.tokio.test:3000");
+    let res = tokio::time::timeout(std::time::Duration::from_secs(10), lookup).await;
+    assert!(res.expect("lookup never completed").is_err());
+}

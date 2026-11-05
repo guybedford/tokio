@@ -38,27 +38,26 @@ pub(crate) async fn resolve(host: String, port: u16) -> io::Result<vec::IntoIter
     }
     // SAFETY: a descriptor the lookup just opened for us to close.
     let fd = AsyncFd::with_interest(unsafe { OwnedFd::from_raw_fd(fd) }, Interest::READABLE)?;
-    loop {
-        let mut guard = fd.readable().await?;
-        let mut res: *mut libc::addrinfo = ptr::null_mut();
-        // SAFETY: `fd` is the lookup's descriptor; `res` receives the list.
-        match unsafe { emscripten_dns_lookup_result(guard.get_inner().as_raw_fd(), &mut res) } {
-            0 => {
-                // SAFETY: a list the lookup allocated, walked once and freed.
-                let addrs = unsafe { collect(res, port) };
-                // SAFETY: the same list, no longer referenced.
-                unsafe { libc::freeaddrinfo(res) };
-                return Ok(addrs.into_iter());
-            }
-            libc::EAI_AGAIN => guard.clear_ready(),
-            code => {
-                // SAFETY: `gai_strerror` returns a static string.
-                let msg = unsafe { CStr::from_ptr(libc::gai_strerror(code)) };
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    msg.to_string_lossy().into_owned(),
-                ));
-            }
+    // The fd is readable only once the lookup has landed, so after readiness
+    // `EAI_AGAIN` is the lookup's own (transient) failure, not "pending".
+    let guard = fd.readable().await?;
+    let mut res: *mut libc::addrinfo = ptr::null_mut();
+    // SAFETY: `fd` is the lookup's descriptor; `res` receives the list.
+    match unsafe { emscripten_dns_lookup_result(guard.get_inner().as_raw_fd(), &mut res) } {
+        0 => {
+            // SAFETY: a list the lookup allocated, walked once and freed.
+            let addrs = unsafe { collect(res, port) };
+            // SAFETY: the same list, no longer referenced.
+            unsafe { libc::freeaddrinfo(res) };
+            Ok(addrs.into_iter())
+        }
+        code => {
+            // SAFETY: `gai_strerror` returns a static string.
+            let msg = unsafe { CStr::from_ptr(libc::gai_strerror(code)) };
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                msg.to_string_lossy().into_owned(),
+            ))
         }
     }
 }
