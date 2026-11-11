@@ -130,6 +130,38 @@ impl<E: Source> PollEvented<E> {
         &self.registration
     }
 
+    /// Waits for a stream socket shut down for writing to have flushed. The
+    /// Emscripten socket glue sends queued writes and then the FIN after
+    /// `shutdown` returns, and reports the socket writable once it has.
+    #[cfg(all(target_os = "emscripten", feature = "net"))]
+    pub(crate) fn poll_write_flushed(
+        &self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<io::Result<()>>
+    where
+        E: std::os::fd::AsRawFd,
+    {
+        use std::task::Poll;
+        loop {
+            let ev = ready!(self.registration.poll_write_ready(cx))?;
+            // A hangup or error ends the wait too: it ends the flush.
+            if ev.ready.is_write_closed() {
+                return Poll::Ready(Ok(()));
+            }
+            let mut fd = libc::pollfd {
+                fd: self.as_raw_fd(),
+                events: libc::POLLOUT,
+                revents: 0,
+            };
+            // SAFETY: one valid `pollfd`; a zero timeout does not block.
+            match unsafe { libc::poll(&mut fd, 1, 0) } {
+                0 => self.registration.clear_readiness(ev),
+                n if n < 0 => return Poll::Ready(Err(io::Error::last_os_error())),
+                _ => return Poll::Ready(Ok(())),
+            }
+        }
+    }
+
     /// Deregisters the inner io from the registration and returns a Result containing the inner io.
     #[cfg(any(feature = "net", feature = "process"))]
     pub(crate) fn into_inner(mut self) -> io::Result<E> {

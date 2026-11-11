@@ -13,7 +13,6 @@ use crate::net::UnixStream;
 
 use crate::net::unix::SocketAddr;
 use std::io;
-use std::net::Shutdown;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -313,8 +312,8 @@ impl AsyncWrite for WriteHalf<'_> {
         Poll::Ready(Ok(()))
     }
 
-    fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
-        self.0.shutdown_std(Shutdown::Write).into()
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.0.poll_shutdown_write(cx)
     }
 }
 
