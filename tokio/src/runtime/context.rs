@@ -16,6 +16,11 @@ cfg_rt! {
     mod runtime;
     pub(crate) use runtime::{EnterRuntime, enter_runtime};
 
+    #[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
+    mod jspi;
+    #[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
+    pub(crate) use jspi::{leave_runtime_for_suspend, record_outer};
+
     mod scoped;
     use scoped::Scoped;
 
@@ -59,6 +64,11 @@ struct Context {
 
     #[cfg(any(feature = "rt", feature = "macros"))]
     rng: Cell<Option<FastRand>>,
+
+    /// The context before the current `block_on`, put back while it is
+    /// suspended.
+    #[cfg(all(feature = "rt", target_os = "emscripten", not(target_feature = "atomics")))]
+    outer: Cell<Option<Box<jspi::Snapshot>>>,
 
     /// Tracks the amount of "work" a task may still do before yielding back to
     /// the scheduler
@@ -107,6 +117,9 @@ tokio_thread_local! {
 
             #[cfg(any(feature = "rt", feature = "macros"))]
             rng: Cell::new(None),
+
+            #[cfg(all(feature = "rt", target_os = "emscripten", not(target_feature = "atomics")))]
+            outer: Cell::new(None),
 
             budget: Cell::new(coop::Budget::unconstrained()),
 
@@ -184,22 +197,6 @@ cfg_rt! {
 
     pub(super) fn set_scheduler<R>(v: &scheduler::Context, f: impl FnOnce() -> R) -> R {
         CONTEXT.with(|c| c.scheduler.set(v, f))
-    }
-
-    #[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
-    pub(crate) struct ClearSchedulerGuard(*const scheduler::Context);
-
-    #[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
-    impl Drop for ClearSchedulerGuard {
-        fn drop(&mut self) {
-            CONTEXT.with(|c| c.scheduler.inner.set(self.0));
-        }
-    }
-
-    /// Unsets the scheduler context until the guard drops, on unwind too.
-    #[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
-    pub(crate) fn clear_scheduler() -> ClearSchedulerGuard {
-        CONTEXT.with(|c| ClearSchedulerGuard(c.scheduler.inner.replace(std::ptr::null())))
     }
 
     #[track_caller]

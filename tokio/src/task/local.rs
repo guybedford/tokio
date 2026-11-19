@@ -309,6 +309,38 @@ impl LocalData {
     }
 }
 
+/// The thread's `LocalSet` state, moved out while a JSPI suspension leaves
+/// the runtime.
+#[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
+pub(crate) struct LocalSnapshot {
+    ctx: Option<Rc<Context>>,
+    wake_on_schedule: bool,
+}
+
+#[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
+impl LocalSnapshot {
+    pub(crate) fn copy() -> LocalSnapshot {
+        CURRENT.with(|d| LocalSnapshot {
+            ctx: d.ctx.get(),
+            wake_on_schedule: d.wake_on_schedule.get(),
+        })
+    }
+
+    pub(crate) fn take() -> LocalSnapshot {
+        CURRENT.with(|d| LocalSnapshot {
+            ctx: d.ctx.replace(None),
+            wake_on_schedule: d.wake_on_schedule.get(),
+        })
+    }
+
+    pub(crate) fn restore(self) {
+        CURRENT.with(|d| {
+            d.ctx.set(self.ctx);
+            d.wake_on_schedule.set(self.wake_on_schedule);
+        });
+    }
+}
+
 /// A guard for `LocalData::enter()`
 struct LocalDataEnterGuard<'a> {
     local_data_ref: &'a LocalData,

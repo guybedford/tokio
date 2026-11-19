@@ -14,10 +14,12 @@
     feature = "macros"
 ))]
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::runtime::Builder;
+use tokio::runtime::{Builder, Handle};
 use tokio::sync::Notify;
 use tokio::time::{sleep, Instant};
 
@@ -238,19 +240,66 @@ async fn farther_timer_survives_nearer_timer_firing() {
     waiter.await.unwrap();
 }
 
-// A host activation can spawn onto the parked runtime: `tokio::spawn` sees
-// the entered runtime's handle, and the spawn unparks the root to run it.
+// A host activation can spawn onto the parked runtime through its handle,
+// and the spawn unparks the root to run it.
 #[test]
 fn host_activation_spawns_onto_parked_runtime() {
     require_jspi!();
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<u32>(2);
-    let tx2 = tx.clone();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<u32>(1);
     let runtime = rt();
     let handle = runtime.handle().clone();
     host_callback(10, move || {
-        tokio::spawn(async move { tx.send(1).await.unwrap() });
-        handle.spawn(async move { tx2.send(2).await.unwrap() });
+        handle.spawn(async move { tx.send(2).await.unwrap() });
     });
-    let out = runtime.block_on(async { rx.recv().await.unwrap() + rx.recv().await.unwrap() });
-    assert_eq!(out, 3);
+    let out = runtime.block_on(async { rx.recv().await.unwrap() });
+    assert_eq!(out, 2);
+}
+
+/// Runs `f` in a host callback while `runtime`'s `block_on` is parked, and
+/// checks that the root and its tasks get their context back on resume.
+fn during_park<T: 'static>(
+    runtime: &tokio::runtime::Runtime,
+    f: impl FnOnce() -> T + 'static,
+) -> T {
+    let out = Rc::new(RefCell::new(None));
+    let o = out.clone();
+    host_callback(10, move || *o.borrow_mut() = Some(f()));
+    let id = runtime.handle().id();
+    runtime.block_on(async move {
+        sleep(Duration::from_millis(50)).await;
+        assert_eq!(Handle::current().id(), id);
+        let task = tokio::spawn(async { tokio::task::id() });
+        assert_eq!(task.id(), task.await.unwrap());
+    });
+    out.take().expect("the host callback ran during the park")
+}
+
+#[test]
+fn host_activation_sees_no_runtime_while_parked() {
+    require_jspi!();
+    assert!(during_park(&rt(), || Handle::try_current().is_err()));
+}
+
+// Not nested in the parked runtime, so the host may enter its own.
+#[test]
+fn host_activation_enters_another_runtime_while_parked() {
+    require_jspi!();
+    let out = during_park(&rt(), || {
+        let other = rt();
+        let _guard = other.enter();
+        drop(tokio::spawn(async {}));
+        other.block_on(async { 1 })
+    });
+    assert_eq!(out, 1);
+}
+
+// The park puts back the context from before `block_on`, not an empty one.
+#[test]
+fn host_activation_sees_pre_entry_handle_while_parked() {
+    require_jspi!();
+    let other = rt();
+    let id = other.handle().id();
+    let _guard = other.enter();
+    let seen = during_park(&rt(), || Handle::try_current().map(|h| h.id()).ok());
+    assert_eq!(seen, Some(id));
 }

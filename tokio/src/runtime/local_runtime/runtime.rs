@@ -256,6 +256,9 @@ impl LocalRuntime {
             crate::runtime::task::Id::next().as_u64(),
         );
 
+        // Before `enter`, which already sets this runtime as current.
+        #[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
+        let _outer = context::record_outer();
         let _enter = self.enter();
 
         if let LocalRuntimeScheduler::CurrentThread(exec) = &self.scheduler {

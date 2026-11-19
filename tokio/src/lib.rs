@@ -490,6 +490,21 @@
 //! `WebAssembly.promising`. A wait from any other activation throws
 //! `WebAssembly.SuspendError`. That is a foreign exception rather than a Rust
 //! panic, so it can't be caught by `catch_unwind`.
+//!
+//! While `block_on` is suspended in a Tokio wait, other code runs on the
+//! thread, and the runtime is not entered for it:
+//!
+//! - host callbacks see no current runtime, so they must hold a [`Handle`] to
+//!   spawn onto it;
+//! - another promising activation may `block_on` its own runtime.
+//!
+//! A suspension Tokio does not issue, such as a suspending import called from
+//! task code, keeps the runtime entered. Host code during it still sees the
+//! runtime, and a `block_on` from it panics as a nested runtime. If a Tokio
+//! wait in another activation resumes while that runtime is still entered,
+//! the process aborts.
+//!
+//! [`Handle`]: crate::runtime::Handle
 
 // Test that pointer width is compatible. This asserts that e.g. usize is at
 // least 32 bits, which a lot of components in Tokio currently assumes.

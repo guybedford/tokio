@@ -368,6 +368,9 @@ impl Handle {
         let future =
             crate::util::trace::task(future, "block_on", _meta, super::task::Id::next().as_u64());
 
+        #[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
+        let _outer = context::record_outer();
+
         // Enter the runtime context. This sets the current driver handles and
         // prevents blocking an existing runtime.
         context::enter_runtime(&self.inner, true, |blocking| {

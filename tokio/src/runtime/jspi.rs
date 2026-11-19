@@ -5,9 +5,13 @@
 //! timer at the deadline or by [`unpark`] from a later activation (a host
 //! callback entering tokio). Both the runtime driver and the thread parker
 //! behind `blocking_recv` and friends park through here, so neither needs the
-//! `rt` feature. The runtime stays entered while parked, so a `block_on` from
-//! another activation on the thread during the park panics as a nested
-//! runtime.
+//! `rt` feature.
+//!
+//! While parked, the thread is put back as it was before the runtime was
+//! entered (see `context::jspi`): host callbacks see no current runtime, and
+//! another promising activation may `block_on` its own runtime. A suspension
+//! Tokio does not issue, from a suspending import called by task code, leaves
+//! the runtime entered.
 
 use std::ffi::c_void;
 use std::ptr;
@@ -225,13 +229,6 @@ impl Drop for Park<'_> {
 /// Suspend the owning activation until [`unpark`] is called on `slot`, or
 /// `dur` elapses on a host timer if given.
 pub(crate) fn park(slot: &Slot, dur: Option<Duration>) {
-    // A host activation entering tokio during the suspension shares this
-    // thread's locals but is not on the runtime: with the scheduler context
-    // left set, its wakes would take the on-runtime shortcut and never
-    // unpark.
-    #[cfg(feature = "rt")]
-    let _scheduler = crate::runtime::context::clear_scheduler();
-
     // SAFETY: creates a fresh promise handle; destroyed by `Park`'s drop.
     let promise = unsafe { emscripten_promise_create() };
     let park = Park {
@@ -241,6 +238,13 @@ pub(crate) fn park(slot: &Slot, dur: Option<Duration>) {
     };
     let prev = slot.0.swap(promise, SeqCst);
     debug_assert!(prev.is_null(), "parker already parked");
+
+    // Host code runs on this thread during the suspension. It must see the
+    // thread as it was before this activation entered the runtime: no
+    // current runtime, so its wakes take the remote path and unpark, and a
+    // `block_on` of its own is not nested.
+    #[cfg(feature = "rt")]
+    let _leave = crate::runtime::context::leave_runtime_for_suspend();
 
     // SAFETY: the handle is live. Under `-sJSPI` this suspends the
     // activation; the caller has checked `jspi_enabled`. A `SuspendError`

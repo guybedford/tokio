@@ -303,6 +303,8 @@ cfg_rt! {
 
     mod local;
     pub use local::{spawn_local, LocalSet, LocalEnterGuard};
+    #[cfg(all(target_os = "emscripten", not(target_feature = "atomics")))]
+    pub(crate) use local::LocalSnapshot;
 
     mod task_local;
     pub use task_local::LocalKey;
